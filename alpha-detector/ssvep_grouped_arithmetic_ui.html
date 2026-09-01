@@ -1,0 +1,163 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SSVEP 分组心算数字输入</title>
+<style>
+  :root { color-scheme: dark; font-family: Arial, sans-serif; }
+  * { box-sizing: border-box; }
+  body { margin: 0; min-height: 100vh; background: #0d1118; color: #f5f7fb; }
+  main { width: 100%; margin: 0; padding: 26px 18px 30px; text-align: center; }
+  h1 { margin: 0; font-size: 34px; }
+  #question { margin: 18px 0 8px; font-size: 44px; font-weight: 700; color: #f5d76e; }
+  #instruction { color: #aeb8c8; font-size: 17px; margin: 0 0 8px; }
+  #stage { min-height: 27px; color: #77e6ff; font-size: 18px; margin: 0 0 4px; }
+  #fixation { min-height: 42px; color: #f5d76e; font-size: 42px; line-height: 42px; font-weight: 700; }
+  #digits { min-height: 68px; font-size: 48px; letter-spacing: 14px; color: #7ee7ff; }
+  #status { min-height: 30px; color: #b8c3d4; font-size: 18px; margin: 4px 0 6px; }
+  #ssvepCanvas { display: block; width: 100%; height: 820px; margin: 0; background: transparent; }
+  button { margin-top: 24px; padding: 10px 22px; border: 0; border-radius: 10px; font-size: 17px; cursor: pointer; background: #3a72ff; color: white; }
+  .warning { margin-top: 22px; color: #8e99aa; font-size: 14px; }
+  @media (max-width: 760px) {
+    main { padding: 18px 10px; }
+    h1 { font-size: 27px; }
+    #question { font-size: 32px; }
+    #digits { font-size: 38px; }
+    #ssvepCanvas { height: 680px; }
+  }
+</style>
+</head>
+<body>
+<main>
+  <h1>SSVEP 分组心算数字输入</h1>
+  <div id="question">正在连接...</div>
+  <p id="instruction">结果为两位数；先注视目标所在的行，再注视目标所在的列；选择完成后看上方中央的十字。</p>
+  <div id="stage">等待 OpenViBE 信号</div>
+  <div id="fixation" aria-label="中央注视点">＋</div>
+  <div id="digits" aria-live="polite">__</div>
+  <div id="status" aria-live="polite">等待 OpenViBE 信号</div>
+  <canvas id="ssvepCanvas" role="img" aria-label="四行三列的 SSVEP 分组数字选择界面"></canvas>
+  <button id="newQuestion" type="button">新题目</button>
+  <div class="warning">60 Hz 显示器；行选择 4 类、列选择 3 类。若出现不适请立即停止。</div>
+</main>
+<script>
+  const DISPLAY_HZ = 60;
+  const rowCycles = [7, 6, 5, 4];
+  const columnCycles = [7, 6, 5];
+  const gridDigits = [
+    [1, 2, 3],
+    [4, 5, 6],
+    [7, 8, 9],
+    [null, 0, null]
+  ];
+  const canvas = document.getElementById('ssvepCanvas');
+  const context = canvas.getContext('2d', { alpha: false });
+  let currentStage = 'row';
+  let selectedRow = null;
+  let layout = { width: 0, height: 0, card: 180, gap: 34, top: 16 };
+
+  function resizeCanvas() {
+    const width = canvas.clientWidth;
+    const compact = width < 760;
+    const card = compact ? Math.min(150, Math.max(82, Math.floor((width - 36) / 3))) : 180;
+    const gap = compact ? 16 : 34;
+    const height = 4 * card + 3 * gap + 32;
+    const pixelRatio = window.devicePixelRatio || 1;
+    canvas.style.height = height + 'px';
+    canvas.width = Math.floor(width * pixelRatio);
+    canvas.height = Math.floor(height * pixelRatio);
+    context.setTransform(pixelRatio, 0, 0, pixelRatio, 0, 0);
+    layout = { width, height, card, gap, top: 16 };
+  }
+
+  function drawRoundRect(x, y, width, height, radius) {
+    context.beginPath();
+    context.roundRect(x, y, width, height, radius);
+  }
+
+  function draw(timestamp) {
+    if (layout.width !== canvas.clientWidth) resizeCanvas();
+    context.fillStyle = '#0d1118';
+    context.fillRect(0, 0, layout.width, layout.height);
+    const frame = Math.floor((timestamp / 1000) * DISPLAY_HZ);
+    const centers = [layout.card / 2, layout.width / 2, layout.width - layout.card / 2];
+    for (let row = 0; row < gridDigits.length; row += 1) {
+      for (let column = 0; column < gridDigits[row].length; column += 1) {
+        const digit = gridDigits[row][column];
+        const isRowSupportCell = row === 3 && digit === null;
+        const x = centers[column] - layout.card / 2;
+        const y = layout.top + row * (layout.card + layout.gap);
+        const groupCycle = currentStage === 'row' ? rowCycles[row] : columnCycles[column];
+        const belongsToActiveGroup = currentStage === 'row'
+          ? true
+          : currentStage === 'column' && row === selectedRow && !isRowSupportCell;
+        const flashOn = belongsToActiveGroup && (frame % groupCycle) < Math.floor(groupCycle / 2);
+        drawRoundRect(x, y, layout.card, layout.card, 22);
+        context.fillStyle = flashOn ? '#f6f8ff' : (belongsToActiveGroup ? '#1a2432' : '#111822');
+        context.globalAlpha = belongsToActiveGroup ? 1 : 0.55;
+        context.fill();
+        context.globalAlpha = 1;
+        context.lineWidth = layout.card < 160 ? 4 : 5;
+        context.strokeStyle = flashOn ? '#ffffff' : (row === selectedRow ? '#77e6ff' : '#3a4658');
+        context.stroke();
+        context.textAlign = 'center';
+        context.textBaseline = 'middle';
+        context.fillStyle = flashOn ? '#101522' : '#f5f7fb';
+        context.font = '700 ' + Math.round(layout.card * 0.38) + 'px Arial, sans-serif';
+        if (digit !== null) {
+          context.fillText(String(digit), x + layout.card / 2, y + layout.card * 0.46);
+        } else {
+          context.fillText('·', x + layout.card / 2, y + layout.card * 0.46);
+        }
+        context.fillStyle = flashOn ? '#273044' : '#c1ccdc';
+        context.font = Math.max(12, Math.round(layout.card * 0.083)) + 'px Arial, sans-serif';
+        const frequency = currentStage === 'row' ? DISPLAY_HZ / rowCycles[row] : DISPLAY_HZ / columnCycles[column];
+        const label = currentStage === 'neutral'
+          ? '中央注视'
+          : isRowSupportCell
+            ? '行辅助刺激'
+            : (currentStage === 'row' ? '行 ' : '列 ') + (currentStage === 'row' ? row + 1 : column + 1);
+        context.fillText(currentStage === 'neutral' ? label : label + ' · ' + frequency.toFixed(2) + ' Hz', x + layout.card / 2, y + layout.card * 0.72);
+      }
+    }
+    requestAnimationFrame(draw);
+  }
+
+  async function refresh() {
+    try {
+      const response = await fetch('/state', { cache: 'no-store' });
+      const state = await response.json();
+      currentStage = state.stage || 'row';
+      selectedRow = Number.isInteger(state.selected_row) ? state.selected_row : null;
+      document.getElementById('question').textContent = state.question;
+      document.getElementById('stage').textContent = currentStage === 'row'
+        ? '当前阶段：选择行（4 类）'
+        : currentStage === 'column'
+          ? '当前阶段：选择列（3 类）'
+          : '当前阶段：请看上方中央十字（过渡中）';
+      document.getElementById('digits').textContent = (state.input || '').padEnd(2, '_');
+      if (state.status === 'correct') {
+        document.getElementById('status').textContent = '识别结果：' + state.answer + '，回答正确';
+      } else if (state.status === 'incorrect') {
+        document.getElementById('status').textContent = '识别结果：' + state.answer + '，请点击“新题目”再试';
+      } else {
+        document.getElementById('status').textContent = state.message || ((state.input || '').length + '/2 位数字已确认');
+      }
+    } catch (error) {
+      document.getElementById('status').textContent = '无法连接本地 UI 服务';
+    }
+  }
+
+  document.getElementById('newQuestion').addEventListener('click', async () => {
+    await fetch('/new', { cache: 'no-store' });
+    refresh();
+  });
+  resizeCanvas();
+  window.addEventListener('resize', resizeCanvas);
+  requestAnimationFrame(draw);
+  refresh();
+  setInterval(refresh, 250);
+</script>
+</body>
+</html>

@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SSVEP 音乐控制</title>
+<style>
+  :root { color-scheme: dark; font-family: Arial, sans-serif; }
+  body { margin: 0; min-height: 100vh; display: grid; place-items: center; background: #10131a; }
+  main { width: 100vw; box-sizing: border-box; text-align: center; }
+  h1 { margin: 0 0 10px; font-size: 32px; }
+  p { color: #b9c1d1; margin: 8px 0 24px; }
+  .targets { display: flex; justify-content: space-between; align-items: center; gap: 0; width: 100%; padding: 0 18px; box-sizing: border-box; }
+  .target { width: 390px; height: 390px; min-height: 0; flex: 0 0 390px; box-sizing: border-box; border: 6px solid #3b4352; border-radius: 28px; display: grid; place-items: center; transition: background-color 0s; }
+  .target strong { display: block; font-size: 64px; letter-spacing: 2px; }
+  .target span { display: block; margin-top: 16px; font-size: 24px; }
+  #left { background: #18a66a; color: #fff; }
+  #right { background: #2456c5; color: #fff; }
+  .note { margin-top: 18px; color: #8e98aa; font-size: 14px; }
+  @media (max-width: 700px) {
+    .targets { flex-direction: column; gap: 16px; padding: 0 12px; }
+    .target { width: min(390px, 82vw); height: min(390px, 82vw); flex-basis: auto; }
+  }
+  @media (min-width: 701px) and (max-width: 850px) {
+    .target { width: 40vw; height: 40vw; flex-basis: 40vw; }
+  }
+</style>
+</head>
+<body>
+<main>
+  <h1>SSVEP 音乐控制</h1>
+  <p>保持头部不动：注视左侧 10 Hz 约 3 秒播放；注视右侧 15 Hz 约 3 秒暂停。每次操作后先看屏幕中央 2–3 秒。</p>
+  <section class="targets">
+    <div id="left" class="target"><div><strong>▶</strong><span>10 Hz · 播放</span></div></div>
+    <div id="right" class="target"><div><strong>Ⅱ</strong><span>15 Hz · 暂停</span></div></div>
+  </section>
+  <div class="note">如果闪烁引起不适，请立即停止。不要用于光敏性癫痫患者。</div>
+</main>
+<script>
+  const left = document.getElementById('left');
+  const right = document.getElementById('right');
+  const leftColor = '#18a66a', leftOff = '#0b4d35';
+  const rightColor = '#2456c5', rightOff = '#10285e';
+  const start = performance.now();
+  function draw(now) {
+    const t = (now - start) / 1000;
+    const leftPhase = (t % 0.100000) < 0.050000;
+    const rightPhase = (t % (1 / 15)) < (1 / 30);
+    left.style.backgroundColor = leftPhase ? leftColor : leftOff;
+    right.style.backgroundColor = rightPhase ? rightColor : rightOff;
+    requestAnimationFrame(draw);
+  }
+  requestAnimationFrame(draw);
+</script>
+</body>
+</html>

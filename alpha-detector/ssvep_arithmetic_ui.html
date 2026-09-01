@@ -1,0 +1,137 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SSVEP 心算数字输入</title>
+<style>
+  :root { color-scheme: dark; font-family: Arial, sans-serif; }
+  * { box-sizing: border-box; }
+  body { margin: 0; min-height: 100vh; background: #0d1118; color: #f5f7fb; }
+  main { width: 100%; margin: 0; padding: 26px 18px 30px; text-align: center; }
+  h1 { margin: 0; font-size: 34px; }
+  #question { margin: 18px 0 8px; font-size: 44px; font-weight: 700; color: #f5d76e; }
+  #instruction { color: #aeb8c8; font-size: 17px; margin: 0 0 12px; }
+  #digits { min-height: 68px; font-size: 48px; letter-spacing: 14px; color: #7ee7ff; }
+  #status { min-height: 30px; color: #b8c3d4; font-size: 18px; margin: 4px 0 20px; }
+  /* Canvas keeps the target geometry and draws every card in one paint pass. */
+  #ssvepCanvas { display: block; width: 100%; height: 820px; margin: 0; background: transparent; }
+  button { margin-top: 24px; padding: 10px 22px; border: 0; border-radius: 10px; font-size: 17px; cursor: pointer; background: #3a72ff; color: white; }
+  .warning { margin-top: 22px; color: #8e99aa; font-size: 14px; }
+  @media (max-width: 760px) {
+    main { padding: 18px 10px; }
+    h1 { font-size: 27px; }
+    #question { font-size: 32px; }
+    #digits { font-size: 38px; }
+    #ssvepCanvas { height: 680px; }
+  }
+</style>
+</head>
+<body>
+<main>
+  <h1>SSVEP 心算数字输入</h1>
+  <div id="question">正在连接...</div>
+  <p id="instruction">心算结果后，逐位注视数字；每位确认后先看屏幕中央，再输入下一位。</p>
+  <div id="digits">___</div>
+  <div id="status">等待 OpenViBE 信号</div>
+  <canvas id="ssvepCanvas" role="img" aria-label="0 到 9 的十个 SSVEP 闪烁数字目标"></canvas>
+  <button id="newQuestion">新题目</button>
+  <div class="warning">60 Hz 显示器；每个数字使用刷新同步闪烁。若出现不适请立即停止。</div>
+</main>
+<script>
+  // 60 Hz exact frame-cycle frequencies: 60 / [12,11,10,9,8,7,6,5,4,3].
+  const DISPLAY_HZ = 60;
+  const frameCycles = [12, 11, 10, 9, 8, 7, 6, 5, 4, 3];
+  const digitPositions = {
+    0: [1, 3], 1: [0, 0], 2: [1, 0], 3: [2, 0],
+    4: [0, 1], 5: [1, 1], 6: [2, 1],
+    7: [0, 2], 8: [1, 2], 9: [2, 2]
+  };
+  const canvas = document.getElementById('ssvepCanvas');
+  const context = canvas.getContext('2d', { alpha: false });
+  let layout = { width: 0, height: 0, card: 180, gap: 34, top: 0 };
+
+  function resizeCanvas() {
+    const width = canvas.clientWidth;
+    const compact = width < 760;
+    const card = compact ? Math.min(150, Math.max(82, Math.floor((width - 36) / 3))) : 180;
+    const gap = compact ? 16 : 34;
+    const height = compact ? (4 * card + 3 * gap + 32) : 4 * card + 3 * gap + 32;
+    const pixelRatio = window.devicePixelRatio || 1;
+    canvas.style.height = height + 'px';
+    canvas.width = Math.floor(width * pixelRatio);
+    canvas.height = Math.floor(height * pixelRatio);
+    context.setTransform(pixelRatio, 0, 0, pixelRatio, 0, 0);
+    layout = { width, height, card, gap, top: 16 };
+  }
+
+  function drawRoundRect(x, y, width, height, radius) {
+    context.beginPath();
+    context.roundRect(x, y, width, height, radius);
+  }
+
+  function draw(timestamp) {
+    if (layout.width !== canvas.clientWidth) resizeCanvas();
+    context.fillStyle = '#0d1118';
+    context.fillRect(0, 0, layout.width, layout.height);
+    const frame = Math.floor((timestamp / 1000) * DISPLAY_HZ);
+    const centers = [layout.card / 2, layout.width / 2, layout.width - layout.card / 2];
+    for (let digit = 0; digit <= 9; digit += 1) {
+      const [column, row] = digitPositions[digit];
+      const x = centers[column] - layout.card / 2;
+      const y = layout.top + row * (layout.card + layout.gap);
+      const cycle = frameCycles[digit];
+      const flashOn = (frame % cycle) < Math.floor(cycle / 2);
+      drawRoundRect(x, y, layout.card, layout.card, 22);
+      context.fillStyle = flashOn ? '#f6f8ff' : '#1a2432';
+      context.fill();
+      context.lineWidth = compactStroke(layout.card);
+      context.strokeStyle = flashOn ? '#ffffff' : '#3a4658';
+      context.stroke();
+      context.textAlign = 'center';
+      context.textBaseline = 'middle';
+      context.fillStyle = flashOn ? '#101522' : '#f5f7fb';
+      context.font = '700 ' + Math.round(layout.card * 0.38) + 'px Arial, sans-serif';
+      context.fillText(String(digit), x + layout.card / 2, y + layout.card * 0.46);
+      context.fillStyle = flashOn ? '#273044' : '#c1ccdc';
+      context.font = Math.max(12, Math.round(layout.card * 0.083)) + 'px Arial, sans-serif';
+      context.fillText((DISPLAY_HZ / cycle).toFixed(2) + ' Hz', x + layout.card / 2, y + layout.card * 0.72);
+    }
+    requestAnimationFrame(draw);
+  }
+
+  function compactStroke(card) {
+    return card < 160 ? 4 : 5;
+  }
+
+  resizeCanvas();
+  window.addEventListener('resize', resizeCanvas);
+  requestAnimationFrame(draw);
+
+  async function refresh() {
+    try {
+      const response = await fetch('/state', { cache: 'no-store' });
+      const state = await response.json();
+      document.getElementById('question').textContent = state.question;
+      const input = state.input || '';
+      document.getElementById('digits').textContent = input.padEnd(3, '_');
+      if (state.status === 'correct') {
+        document.getElementById('status').textContent = '识别结果：' + state.answer + '，回答正确';
+      } else if (state.status === 'incorrect') {
+        document.getElementById('status').textContent = '识别结果：' + state.answer + '，请点击“新题目”再试';
+      } else {
+        document.getElementById('status').textContent = input.length + '/3 位数字已确认';
+      }
+    } catch (error) {
+      document.getElementById('status').textContent = '无法连接本地 UI 服务';
+    }
+  }
+  document.getElementById('newQuestion').addEventListener('click', async () => {
+    await fetch('/new', { cache: 'no-store' });
+    refresh();
+  });
+  refresh();
+  setInterval(refresh, 250);
+</script>
+</body>
+</html>

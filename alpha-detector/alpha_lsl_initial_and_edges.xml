@@ -1,0 +1,109 @@
+<OpenViBE-Scenario>
+	<FormatVersion>2</FormatVersion>
+	<Creator>OpenViBE Designer</Creator>
+	<CreatorVersion>3.7.0</CreatorVersion>
+	<Settings></Settings>
+	<Inputs></Inputs>
+	<Outputs></Outputs>
+	<Boxes>
+		<Box>
+			<Identifier>(0x00000010, 0x00000001)</Identifier>
+			<Name>Acquisition client</Name>
+			<AlgorithmClassIdentifier>(0x35d225cb, 0x3e6e3a5f)</AlgorithmClassIdentifier>
+			<Outputs>
+				<Output><TypeIdentifier>(0x403488e7, 0x565d70b6)</TypeIdentifier><Name>Experiment information</Name></Output>
+				<Output><TypeIdentifier>(0x5ba36127, 0x195feae1)</TypeIdentifier><Name>Signal stream</Name></Output>
+				<Output><TypeIdentifier>(0x6f752dd0, 0x082a321e)</TypeIdentifier><Name>Stimulations</Name></Output>
+				<Output><TypeIdentifier>(0x013df452, 0xa3a8879a)</TypeIdentifier><Name>Channel localisation</Name></Output>
+				<Output><TypeIdentifier>(0x6ab26b81, 0x0f8c02f3)</TypeIdentifier><Name>Channel units</Name></Output>
+			</Outputs>
+			<Settings>
+				<Setting><TypeIdentifier>(0x79a9edeb, 0x245d83fc)</TypeIdentifier><Name>Acquisition server hostname</Name><DefaultValue>${AcquisitionServer_HostName}</DefaultValue><Value>${AcquisitionServer_HostName}</Value><Modifiability>false</Modifiability></Setting>
+				<Setting><TypeIdentifier>(0x007deef9, 0x2f3e95c6)</TypeIdentifier><Name>Acquisition server port</Name><DefaultValue>1024</DefaultValue><Value>1024</Value><Modifiability>false</Modifiability></Setting>
+			</Settings>
+			<Attributes><Attribute><Identifier>(0x1fa7a38f, 0x54edbe0b)</Identifier><Value>32</Value></Attribute><Attribute><Identifier>(0x207c9054, 0x3c841b63)</Identifier><Value>240</Value></Attribute><Attribute><Identifier>(0x4e7b798a, 0x183beafb)</Identifier><Value>(0x0d4656c0, 0xc95b1fa8)</Value></Attribute><Attribute><Identifier>(0xc80ce8af, 0xf699f813)</Identifier><Value>5</Value></Attribute><Attribute><Identifier>(0xce18836a, 0x9c0eb403)</Identifier><Value>2</Value></Attribute></Attributes>
+		</Box>
+		<Box>
+			<Identifier>(0x00000010, 0x00000002)</Identifier>
+			<Name>Channel Selector</Name>
+			<AlgorithmClassIdentifier>(0x361722e8, 0x311574e8)</AlgorithmClassIdentifier>
+			<Inputs><Input><TypeIdentifier>(0x5ba36127, 0x195feae1)</TypeIdentifier><Name>Input signal</Name></Input></Inputs>
+			<Outputs><Output><TypeIdentifier>(0x5ba36127, 0x195feae1)</TypeIdentifier><Name>Output signal</Name></Output></Outputs>
+			<Settings><Setting><TypeIdentifier>(0x79a9edeb, 0x245d83fc)</TypeIdentifier><Name>Channel List</Name><DefaultValue>9</DefaultValue><Value>9</Value><Modifiability>false</Modifiability></Setting><Setting><TypeIdentifier>(0x3bcf9e67, 0x0c23994d)</TypeIdentifier><Name>Action</Name><DefaultValue>Select</DefaultValue><Value>Select</Value><Modifiability>false</Modifiability></Setting><Setting><TypeIdentifier>(0x666f25e9, 0x3e5738d6)</TypeIdentifier><Name>Channel Matching Method</Name><DefaultValue>Smart</DefaultValue><Value>Smart</Value><Modifiability>false</Modifiability></Setting></Settings>
+			<Attributes><Attribute><Identifier>(0x1fa7a38f, 0x54edbe0b)</Identifier><Value>240</Value></Attribute><Attribute><Identifier>(0x207c9054, 0x3c841b63)</Identifier><Value>240</Value></Attribute><Attribute><Identifier>(0x4e7b798a, 0x183beafb)</Identifier><Value>(0x277826e1, 0xa30a3bd0)</Value></Attribute><Attribute><Identifier>(0xc80ce8af, 0xf699f813)</Identifier><Value>1</Value></Attribute><Attribute><Identifier>(0xce18836a, 0x9c0eb403)</Identifier><Value>3</Value></Attribute><Attribute><Identifier>(0xcfad85b0, 0x7c6d841c)</Identifier><Value>1</Value></Attribute></Attributes>
+		</Box>
+		<Box>
+			<Identifier>(0x00000010, 0x00000003)</Identifier>
+			<Name>Temporal Filter</Name>
+			<AlgorithmClassIdentifier>(0xb4f9d042, 0x9d79f2e5)</AlgorithmClassIdentifier>
+			<Inputs><Input><TypeIdentifier>(0x5ba36127, 0x195feae1)</TypeIdentifier><Name>Input signal</Name></Input></Inputs>
+			<Outputs><Output><TypeIdentifier>(0x5ba36127, 0x195feae1)</TypeIdentifier><Name>Output signal</Name></Output></Outputs>
+			<Settings><Setting><TypeIdentifier>(0xfa20178e, 0x4cba62e9)</TypeIdentifier><Name>Filter Type</Name><DefaultValue>Band Pass</DefaultValue><Value>Band Pass</Value><Modifiability>false</Modifiability></Setting><Setting><TypeIdentifier>(0x007deef9, 0x2f3e95c6)</TypeIdentifier><Name>Filter Order</Name><DefaultValue>4</DefaultValue><Value>4</Value><Modifiability>false</Modifiability></Setting><Setting><TypeIdentifier>(0x512a166f, 0x5c3ef83f)</TypeIdentifier><Name>Low Cut-off Frequency (Hz)</Name><DefaultValue>1</DefaultValue><Value>8</Value><Modifiability>false</Modifiability></Setting><Setting><TypeIdentifier>(0x512a166f, 0x5c3ef83f)</TypeIdentifier><Name>High Cut-off Frequency (Hz)</Name><DefaultValue>40</DefaultValue><Value>12</Value><Modifiability>false</Modifiability></Setting></Settings>
+			<Attributes><Attribute><Identifier>(0x1fa7a38f, 0x54edbe0b)</Identifier><Value>448</Value></Attribute><Attribute><Identifier>(0x207c9054, 0x3c841b63)</Identifier><Value>240</Value></Attribute><Attribute><Identifier>(0x4e7b798a, 0x183beafb)</Identifier><Value>(0x6a7c1e9b, 0x6b00b5c5)</Value></Attribute><Attribute><Identifier>(0xc80ce8af, 0xf699f813)</Identifier><Value>1</Value></Attribute><Attribute><Identifier>(0xce18836a, 0x9c0eb403)</Identifier><Value>4</Value></Attribute><Attribute><Identifier>(0xcfad85b0, 0x7c6d841c)</Identifier><Value>1</Value></Attribute></Attributes>
+		</Box>
+		<Box>
+			<Identifier>(0x00000010, 0x00000009)</Identifier>
+			<Name>Time based epoching</Name>
+			<AlgorithmClassIdentifier>(0x00777fa0, 0x5dc3f560)</AlgorithmClassIdentifier>
+			<Inputs><Input><TypeIdentifier>(0x5ba36127, 0x195feae1)</TypeIdentifier><Name>Input signal</Name></Input></Inputs>
+			<Outputs><Output><TypeIdentifier>(0x5ba36127, 0x195feae1)</TypeIdentifier><Name>Epoched signal 1</Name></Output></Outputs>
+			<Settings><Setting><TypeIdentifier>(0x512a166f, 0x5c3ef83f)</TypeIdentifier><Name>Epoch 1 duration (in sec)</Name><DefaultValue>1</DefaultValue><Value>1</Value><Modifiability>false</Modifiability></Setting><Setting><TypeIdentifier>(0x512a166f, 0x5c3ef83f)</TypeIdentifier><Name>Epoch 1 intervals (in sec)</Name><DefaultValue>0.5</DefaultValue><Value>0.5</Value><Modifiability>false</Modifiability></Setting></Settings>
+			<Attributes><Attribute><Identifier>(0x17ee7c08, 0x94c14893)</Identifier><Value></Value></Attribute><Attribute><Identifier>(0x1fa7a38f, 0x54edbe0b)</Identifier><Value>560</Value></Attribute><Attribute><Identifier>(0x207c9054, 0x3c841b63)</Identifier><Value>240</Value></Attribute><Attribute><Identifier>(0x4e7b798a, 0x183beafb)</Identifier><Value>(0xc5ff41e9, 0xccc59a01)</Value></Attribute><Attribute><Identifier>(0xc46b3d00, 0x3e0454e1)</Identifier><Value>(0x00000000, 0x006bdf4b)</Value></Attribute></Attributes>
+		</Box>
+		<Box>
+			<Identifier>(0x00000010, 0x00000004)</Identifier>
+			<Name>Simple DSP</Name>
+			<AlgorithmClassIdentifier>(0x00e26fa1, 0x1dbab1b2)</AlgorithmClassIdentifier>
+			<Inputs><Input><TypeIdentifier>(0x5ba36127, 0x195feae1)</TypeIdentifier><Name>Input - A</Name></Input></Inputs>
+			<Outputs><Output><TypeIdentifier>(0x5ba36127, 0x195feae1)</TypeIdentifier><Name>Output</Name></Output></Outputs>
+			<Settings><Setting><TypeIdentifier>(0x79a9edeb, 0x245d83fc)</TypeIdentifier><Name>Equation</Name><DefaultValue>x</DefaultValue><Value>x*x</Value><Modifiability>false</Modifiability></Setting></Settings>
+			<Attributes><Attribute><Identifier>(0x1fa7a38f, 0x54edbe0b)</Identifier><Value>656</Value></Attribute><Attribute><Identifier>(0x207c9054, 0x3c841b63)</Identifier><Value>240</Value></Attribute><Attribute><Identifier>(0x4e7b798a, 0x183beafb)</Identifier><Value>(0x21889dc4, 0x1126497e)</Value></Attribute><Attribute><Identifier>(0xc80ce8af, 0xf699f813)</Identifier><Value>1</Value></Attribute><Attribute><Identifier>(0xce18836a, 0x9c0eb403)</Identifier><Value>1</Value></Attribute><Attribute><Identifier>(0xcfad85b0, 0x7c6d841c)</Identifier><Value>1</Value></Attribute></Attributes>
+		</Box>
+		<Box>
+			<Identifier>(0x00000010, 0x00000005)</Identifier>
+			<Name>Signal average</Name>
+			<AlgorithmClassIdentifier>(0x00642c4d, 0x5df7e50a)</AlgorithmClassIdentifier>
+			<Inputs><Input><TypeIdentifier>(0x5ba36127, 0x195feae1)</TypeIdentifier><Name>Input signal</Name></Input></Inputs>
+			<Outputs><Output><TypeIdentifier>(0x5ba36127, 0x195feae1)</TypeIdentifier><Name>Filtered signal</Name></Output></Outputs>
+			<Attributes><Attribute><Identifier>(0x1fa7a38f, 0x54edbe0b)</Identifier><Value>864</Value></Attribute><Attribute><Identifier>(0x207c9054, 0x3c841b63)</Identifier><Value>240</Value></Attribute><Attribute><Identifier>(0x4e7b798a, 0x183beafb)</Identifier><Value>(0xc5ff4187, 0xffc5f432)</Value></Attribute><Attribute><Identifier>(0xc80ce8af, 0xf699f813)</Identifier><Value>1</Value></Attribute><Attribute><Identifier>(0xcfad85b0, 0x7c6d841c)</Identifier><Value>1</Value></Attribute></Attributes>
+		</Box>
+		<Box>
+			<Identifier>(0x00000010, 0x00000006)</Identifier>
+			<Name>Python 3 scripting</Name>
+			<AlgorithmClassIdentifier>(0x5dc4f669, 0xd3fd4d63)</AlgorithmClassIdentifier>
+			<Inputs><Input><Identifier>(0xed15d980, 0xc7e2bbc3)</Identifier><TypeIdentifier>(0x5ba36127, 0x195feae1)</TypeIdentifier><Name>Alpha metric</Name></Input></Inputs>
+			<Outputs><Output><Identifier>(0x7ed15d98, 0xc7e2bbc3)</Identifier><TypeIdentifier>(0x6f752dd0, 0x082a321e)</TypeIdentifier><Name>Alpha state stimulations</Name></Output></Outputs>
+			<Settings><Setting><TypeIdentifier>(0x007deef9, 0x2f3e95c6)</TypeIdentifier><Name>Clock frequency (Hz)</Name><DefaultValue>64</DefaultValue><Value>64</Value><Modifiability>false</Modifiability></Setting><Setting><TypeIdentifier>(0xb0d0db45, 0x49cbc34a)</TypeIdentifier><Name>Script</Name><DefaultValue></DefaultValue><Value>${Player_ScenarioDirectory}/alpha_state_detector.py</Value><Modifiability>false</Modifiability></Setting><Setting><TypeIdentifier>(0x512a166f, 0x5c3ef83f)</TypeIdentifier><Name>Closed threshold</Name><DefaultValue>0.5</DefaultValue><Value>0.5</Value><Modifiability>false</Modifiability></Setting><Setting><TypeIdentifier>(0x512a166f, 0x5c3ef83f)</TypeIdentifier><Name>Open threshold</Name><DefaultValue>0.3</DefaultValue><Value>0.3</Value><Modifiability>false</Modifiability></Setting><Setting><TypeIdentifier>(0x007deef9, 0x2f3e95c6)</TypeIdentifier><Name>Smoothing windows</Name><DefaultValue>3</DefaultValue><Value>3</Value><Modifiability>false</Modifiability></Setting><Setting><TypeIdentifier>(0x007deef9, 0x2f3e95c6)</TypeIdentifier><Name>Baseline windows</Name><DefaultValue>20</DefaultValue><Value>20</Value><Modifiability>false</Modifiability></Setting><Setting><TypeIdentifier>(0x007deef9, 0x2f3e95c6)</TypeIdentifier><Name>Confirmation windows</Name><DefaultValue>2</DefaultValue><Value>2</Value><Modifiability>false</Modifiability></Setting><Setting><TypeIdentifier>(0x007deef9, 0x2f3e95c6)</TypeIdentifier><Name>Minimum closed windows</Name><DefaultValue>6</DefaultValue><Value>6</Value><Modifiability>false</Modifiability></Setting></Settings>
+			<Attributes><Attribute><Identifier>(0x17ee7c08, 0x94c14893)</Identifier><Value></Value></Attribute><Attribute><Identifier>(0x1fa7a38f, 0x54edbe0b)</Identifier><Value>1072</Value></Attribute><Attribute><Identifier>(0x207c9054, 0x3c841b63)</Identifier><Value>240</Value></Attribute><Attribute><Identifier>(0x4e7b798a, 0x183beafb)</Identifier><Value>(0x2a651510, 0xb4fad0d4)</Value></Attribute><Attribute><Identifier>(0xce18836a, 0x9c0eb403)</Identifier><Value>2</Value></Attribute></Attributes>
+		</Box>
+		<Box>
+			<Identifier>(0x00000010, 0x00000007)</Identifier>
+			<Name>Signal display</Name>
+			<AlgorithmClassIdentifier>(0x0055be5f, 0x087bdd12)</AlgorithmClassIdentifier>
+			<Inputs><Input><TypeIdentifier>(0x5ba36127, 0x195feae1)</TypeIdentifier><Name>Data</Name></Input><Input><TypeIdentifier>(0x6f752dd0, 0x082a321e)</TypeIdentifier><Name>Stimulations</Name></Input><Input><TypeIdentifier>(0x6ab26b81, 0x0f8c02f3)</TypeIdentifier><Name>Channel Units</Name></Input></Inputs>
+			<Settings><Setting><TypeIdentifier>(0x5de046a6, 0x086340aa)</TypeIdentifier><Name>Display Mode</Name><DefaultValue>Scan</DefaultValue><Value>Scan</Value><Modifiability>false</Modifiability></Setting><Setting><TypeIdentifier>(0x33a30739, 0x00d5299b)</TypeIdentifier><Name>Auto vertical scale</Name><DefaultValue>Per channel</DefaultValue><Value>Per channel</Value><Modifiability>false</Modifiability></Setting><Setting><TypeIdentifier>(0x512a166f, 0x5c3ef83f)</TypeIdentifier><Name>Scale refresh interval (secs)</Name><DefaultValue>5</DefaultValue><Value>5</Value><Modifiability>false</Modifiability></Setting><Setting><TypeIdentifier>(0x512a166f, 0x5c3ef83f)</TypeIdentifier><Name>Vertical Scale</Name><DefaultValue>1</DefaultValue><Value>1</Value><Modifiability>false</Modifiability></Setting><Setting><TypeIdentifier>(0x512a166f, 0x5c3ef83f)</TypeIdentifier><Name>Vertical Offset</Name><DefaultValue>0</DefaultValue><Value>0</Value><Modifiability>false</Modifiability></Setting><Setting><TypeIdentifier>(0x512a166f, 0x5c3ef83f)</TypeIdentifier><Name>Time Scale</Name><DefaultValue>10</DefaultValue><Value>10</Value><Modifiability>false</Modifiability></Setting><Setting><TypeIdentifier>(0x2cdb2f0b, 0x12f231ea)</TypeIdentifier><Name>Bottom ruler</Name><DefaultValue>true</DefaultValue><Value>true</Value><Modifiability>false</Modifiability></Setting><Setting><TypeIdentifier>(0x2cdb2f0b, 0x12f231ea)</TypeIdentifier><Name>Left ruler</Name><DefaultValue>false</DefaultValue><Value>false</Value><Modifiability>false</Modifiability></Setting><Setting><TypeIdentifier>(0x2cdb2f0b, 0x12f231ea)</TypeIdentifier><Name>Multiview</Name><DefaultValue>false</DefaultValue><Value>false</Value><Modifiability>false</Modifiability></Setting></Settings>
+			<Attributes><Attribute><Identifier>(0x1fa7a38f, 0x54edbe0b)</Identifier><Value>1328</Value></Attribute><Attribute><Identifier>(0x207c9054, 0x3c841b63)</Identifier><Value>240</Value></Attribute><Attribute><Identifier>(0x4e7b798a, 0x183beafb)</Identifier><Value>(0x92c056a7, 0x2dc71aff)</Value></Attribute><Attribute><Identifier>(0x527ad68d, 0x16d746a0)</Identifier><Value></Value></Attribute><Attribute><Identifier>(0xce18836a, 0x9c0eb403)</Identifier><Value>9</Value></Attribute><Attribute><Identifier>(0xcfad85b0, 0x7c6d841c)</Identifier><Value>3</Value></Attribute></Attributes>
+		</Box>
+		<Box>
+			<Identifier>(0x00000010, 0x00000008)</Identifier>
+			<Name>Stimulation listener</Name>
+			<AlgorithmClassIdentifier>(0x65731e1d, 0x47de5276)</AlgorithmClassIdentifier>
+			<Inputs><Input><TypeIdentifier>(0x6f752dd0, 0x082a321e)</TypeIdentifier><Name>Stimulation stream 1</Name></Input></Inputs>
+			<Settings><Setting><TypeIdentifier>(0xa88b3667, 0x0871638c)</TypeIdentifier><Name>Log level to use</Name><DefaultValue>Information</DefaultValue><Value>Information</Value><Modifiability>false</Modifiability></Setting></Settings>
+			<Attributes><Attribute><Identifier>(0x1fa7a38f, 0x54edbe0b)</Identifier><Value>1072</Value></Attribute><Attribute><Identifier>(0x207c9054, 0x3c841b63)</Identifier><Value>480</Value></Attribute><Attribute><Identifier>(0x4e7b798a, 0x183beafb)</Identifier><Value>(0xf451ad91, 0x14c75f86)</Value></Attribute><Attribute><Identifier>(0xce18836a, 0x9c0eb403)</Identifier><Value>1</Value></Attribute><Attribute><Identifier>(0xcfad85b0, 0x7c6d841c)</Identifier><Value>1</Value></Attribute><Attribute><Identifier>(0xfba64161, 0x65304e21)</Identifier><Value></Value></Attribute></Attributes>
+		</Box>
+	</Boxes>
+	<Links>
+		<Link><Identifier>(0x00000020, 0x00000001)</Identifier><Source><BoxIdentifier>(0x00000010, 0x00000001)</BoxIdentifier><BoxOutputIndex>1</BoxOutputIndex></Source><Target><BoxIdentifier>(0x00000010, 0x00000002)</BoxIdentifier><BoxInputIndex>0</BoxInputIndex></Target></Link>
+		<Link><Identifier>(0x00000020, 0x00000002)</Identifier><Source><BoxIdentifier>(0x00000010, 0x00000002)</BoxIdentifier><BoxOutputIndex>0</BoxOutputIndex></Source><Target><BoxIdentifier>(0x00000010, 0x00000003)</BoxIdentifier><BoxInputIndex>0</BoxInputIndex></Target></Link>
+		<Link><Identifier>(0x00000020, 0x00000003)</Identifier><Source><BoxIdentifier>(0x00000010, 0x00000003)</BoxIdentifier><BoxOutputIndex>0</BoxOutputIndex></Source><Target><BoxIdentifier>(0x00000010, 0x00000009)</BoxIdentifier><BoxInputIndex>0</BoxInputIndex></Target></Link>
+		<Link><Identifier>(0x00000020, 0x00000009)</Identifier><Source><BoxIdentifier>(0x00000010, 0x00000009)</BoxIdentifier><BoxOutputIndex>0</BoxOutputIndex></Source><Target><BoxIdentifier>(0x00000010, 0x00000004)</BoxIdentifier><BoxInputIndex>0</BoxInputIndex></Target></Link>
+		<Link><Identifier>(0x00000020, 0x00000004)</Identifier><Source><BoxIdentifier>(0x00000010, 0x00000004)</BoxIdentifier><BoxOutputIndex>0</BoxOutputIndex></Source><Target><BoxIdentifier>(0x00000010, 0x00000005)</BoxIdentifier><BoxInputIndex>0</BoxInputIndex></Target></Link>
+		<Link><Identifier>(0x00000020, 0x00000005)</Identifier><Source><BoxIdentifier>(0x00000010, 0x00000005)</BoxIdentifier><BoxOutputIndex>0</BoxOutputIndex></Source><Target><BoxIdentifier>(0x00000010, 0x00000006)</BoxIdentifier><BoxInputIndex>0</BoxInputIndex></Target></Link>
+		<Link><Identifier>(0x00000020, 0x00000006)</Identifier><Source><BoxIdentifier>(0x00000010, 0x00000005)</BoxIdentifier><BoxOutputIndex>0</BoxOutputIndex></Source><Target><BoxIdentifier>(0x00000010, 0x00000007)</BoxIdentifier><BoxInputIndex>0</BoxInputIndex></Target></Link>
+		<Link><Identifier>(0x00000020, 0x00000007)</Identifier><Source><BoxIdentifier>(0x00000010, 0x00000006)</BoxIdentifier><BoxOutputIndex>0</BoxOutputIndex></Source><Target><BoxIdentifier>(0x00000010, 0x00000007)</BoxIdentifier><BoxInputIndex>1</BoxInputIndex></Target></Link>
+		<Link><Identifier>(0x00000020, 0x00000008)</Identifier><Source><BoxIdentifier>(0x00000010, 0x00000006)</BoxIdentifier><BoxOutputIndex>0</BoxOutputIndex></Source><Target><BoxIdentifier>(0x00000010, 0x00000008)</BoxIdentifier><BoxInputIndex>0</BoxInputIndex></Target></Link>
+	</Links>
+	<Comments><Comment><Identifier>(0x00000030, 0x00000001)</Identifier><Text>Live OpenBCI LSL eye-state detector. Channel 9, 8-12 Hz alpha, 1 second windows every 0.5 seconds. First 20 windows are eyes-open baseline. Closed threshold = +50 percent; open threshold = +30 percent. Closed state requires 6 consecutive windows (about 3 seconds), so blinks remain eyes open. Label_01 = eyes closed, Label_00 = eyes open. Emits initial state once, then only state changes.</Text><Attributes><Attribute><Identifier>(0x473d9a43, 0x97fc0a97)</Identifier><Value>32</Value></Attribute><Attribute><Identifier>(0x7234b86b, 0x2b8651a5)</Identifier><Value>640</Value></Attribute></Attributes></Comment></Comments>
+	<Metadata></Metadata>
+</OpenViBE-Scenario>

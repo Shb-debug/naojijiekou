@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>EEG Horizon Run · SSVEP Game</title>
+  <link rel="stylesheet" href="styles.css" />
+  <link rel="stylesheet" href="overrides.css" />
+</head>
+<body>
+  <main class="app-shell">
+    <header class="topbar">
+      <div class="brand-lockup"><div class="brand-mark"><span></span><span></span><span></span></div><div><p class="eyebrow">OPENBCI · SSVEP GAME</p><h1>EEG Horizon Run</h1></div></div>
+      <div class="session-meta"><button id="connectionPill" class="connection-pill" title="连接真实 EEG"><i></i><span id="connectionText">模拟信号 · 键盘输入</span></button><div class="session-time" id="sessionTime">00:00</div></div>
+    </header>
+
+    <section id="homeScreen" class="home-screen screen">
+      <div class="home-hero panel"><div class="hero-copy"><p class="eyebrow">NEURAL ARCADE · RUN 01</p><h2>注视目标，<br /><em>收集你的分数。</em></h2><p>小车会自动向前行驶。只需用 SSVEP 选择左道或右道，在 90 秒内穿越三条能量车道，收集尽可能多的目标。</p><div class="hero-actions"><button id="startButton" class="primary-button"><span>进入对局</span><b>→</b></button><button id="calibrationButton" class="secondary-button">校准 EEG</button></div></div><div class="hero-radar"><div class="radar-ring ring-one"></div><div class="radar-ring ring-two"></div><div class="radar-sweep"></div><div class="radar-car">◆</div><span class="radar-label label-a">SSVEP</span><span class="radar-label label-b">90 SEC</span><span class="radar-label label-c">100 PTS</span></div><div class="hero-tags"><span>← 左道 · 20 Hz</span><span>右道 · 15 Hz →</span><span>自动前进 · 三车道</span></div></div>
+      <section class="history-section panel"><div class="section-title"><div><p class="eyebrow">LOCAL MEMORY</p><h2>历史对局</h2></div><span id="historyCount">0 场记录</span></div><div id="historyList" class="history-list"></div></section>
+    </section>
+
+    <section id="gameScreen" class="game-screen screen hidden">
+      <aside class="left-rail panel"><div class="rail-header"><div><p class="eyebrow">NEURAL LINK</p><h2>对局状态</h2></div><span class="live-dot">LIVE</span></div><div class="score-card"><div class="metric-label"><span>当前得分</span><span><b id="scoreValue">0</b> <small>/ 100</small></span></div><div class="score-track"><div id="scoreBar"></div></div><div class="tiny-note">碰撞目标自动计分 · 分值上限 100</div></div><div class="metric-card"><div class="metric-label"><span>剩余时间</span><span class="time-value" id="timeValue">01:30</span></div><div class="time-track"><div id="timeBar"></div></div><div class="tiny-note">自动前进中 · 只需控制左右</div></div><div class="metric-card"><div class="metric-label"><span>当前车道</span><span id="laneValue">中道</span></div><div class="lane-indicator"><i></i><i class="current"></i><i></i></div><div class="tiny-note">← / → 或点击 SSVEP 目标</div></div><div class="metric-card"><div class="metric-label"><span>信号置信度</span><span id="confidenceValue">86%</span></div><div class="confidence-track"><div id="confidenceBar"></div></div><div class="tiny-note">连续确认阈值 <b>72%</b></div></div><div class="electrode-card"><div class="metric-label"><span>枕区电极</span><span class="signal-good">● 稳定</span></div><div class="electrode-grid"><span>O1 <i></i></span><span>Oz <i></i></span><span>O2 <i></i></span><span>Pz <i></i></span></div></div><div class="hint-box"><span class="hint-icon">⌘</span><p><b>体验模式</b><br />使用 ← / → 或点击边缘按钮模拟 EEG 指令。按 <kbd>Esc</kbd> 结束本局。</p></div></aside>
+      <section class="game-stage panel"><div class="stage-header"><div><p class="eyebrow">LIVE VEHICLE TELEMETRY</p><h2>Horizon Valley <span>/ RUN <b id="runNumber">01</b></span></h2></div><div class="drive-readout"><span class="readout-label">驾驶模式</span><strong>AUTO DRIVE</strong></div></div><div class="game-wrap"><canvas id="gameCanvas" aria-label="三车道小车收集游戏"></canvas><div class="scene-vignette"></div><div class="scene-hud hud-top-left"><span class="hud-dot"></span> HORIZON VALLEY <small>COLLECT THE SIGNALS</small></div><div class="scene-hud hud-top-right"><span>RUN <b>01</b></span><small>OPENBCI FIELD TEST</small></div><div class="scene-hud hud-bottom-left"><span id="driveMode">AUTO DRIVE</span><small id="driveSubtext">前进 · 目标自动刷新</small></div><div class="scene-hud hud-bottom-right"><span id="speedReadout">058</span><small>KM/H · SIM</small></div><div class="lane-markers"><span>01</span><span>02</span><span>03</span></div></div><div class="timeline-row"><div class="timeline-label"><span class="pulse-dot"></span><span>COLLECTED LOG</span></div><div class="command-log" id="commandLog"><span class="log-empty">等待收集目标…</span></div></div></section>
+    </section>
+
+    <button class="neural-button command-button button-left" data-command="left" style="--freq:20;" aria-label="左道，20赫兹"><span class="button-glyph">←</span><span class="button-copy"><b>左道</b><small>20 Hz · EEG 2/4/6</small></span></button>
+    <button class="neural-button command-button button-right" data-command="right" style="--freq:15;" aria-label="右道，15赫兹"><span class="button-copy align-right"><b>右道</b><small>15 Hz · EEG 2/4/6</small></span><span class="button-glyph">→</span></button>
+    <footer class="footer-bar"><div class="footer-note"><span class="footer-icon">◎</span> SSVEP 交互原型 · 当前用键盘模拟分类结果 · 前进由系统自动完成</div><div class="footer-actions"><button id="homeButton" class="text-button">返回主页</button><span class="version">BUILD 0.2 · LOCAL DEMO</span></div></footer>
+  </main>
+
+  <div id="resultModal" class="modal-backdrop hidden" role="dialog" aria-modal="true" aria-labelledby="resultTitle"><div class="result-modal"><div class="celebration-orbit orbit-a"></div><div class="celebration-orbit orbit-b"></div><div class="celebration-star star-a">✦</div><div class="celebration-star star-b">✧</div><div class="trophy">★</div><p class="eyebrow">RUN COMPLETE · EEG VERIFIED</p><h2 id="resultTitle">信号捕获完成</h2><p class="result-phrase" id="resultPhrase">漂亮的路线判断！</p><div class="final-score"><span>FINAL SCORE</span><strong id="finalScore">0</strong><small>/ 100</small></div><div class="result-stats"><span><b id="resultTargets">0</b> 个目标</span><span><b id="resultDuration">01:30</b> 对局时长</span></div><div class="modal-actions"><button id="replayButton" class="primary-button"><span>再来一局</span><b>↻</b></button><button id="finishButton" class="secondary-button">结束游戏</button></div></div></div>
+  <div id="calibrationModal" class="modal-backdrop calibration-backdrop hidden" role="dialog" aria-modal="true" aria-labelledby="calibrationTitle"><div class="result-modal calibration-modal"><p class="eyebrow">PERSONAL SSVEP CALIBRATION</p><h2 id="calibrationTitle">EEG 个人校准</h2><p id="calibrationInstruction" class="result-phrase">请先启动 OpenViBE 场景，再开始校准。</p><div class="calibration-phase" id="calibrationPhase">等待开始</div><strong class="calibration-countdown" id="calibrationCountdown">--</strong><div class="calibration-progress"><div id="calibrationProgressBar"></div></div><div class="modal-actions"><button id="calibrationStartButton" class="primary-button"><span>开始校准</span><b>◎</b></button><button id="calibrationCloseButton" class="secondary-button">关闭</button></div></div></div>
+  <script src="app.js"></script>
+</body>
+</html>

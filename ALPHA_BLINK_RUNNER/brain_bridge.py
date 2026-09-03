@@ -38,8 +38,8 @@ DEFAULT_CONFIG: dict[str, Any] = {
     "eval_interval_seconds": 0.10, "blink_absolute_threshold": 35.0,
     "blink_z_threshold": 5.0, "blink_release_z": 1.8, "blink_refractory_seconds": 0.55,
     "blink_warmup_seconds": 4.0, "blink_calibration_window_seconds": 1.5,
-    "blink_min_peak_ratio": 8.0, "blink_confirmations": 2,
-    "blink_smoothing_seconds": 0.04,
+    "blink_min_peak_ratio": 12.0, "blink_confirmations": 1,
+    "blink_smoothing_seconds": 0.04, "blink_negative_polarity_ratio": 3.0,
     "alpha_band": [8.0, 13.0], "alpha_ready_ratio": 0.16,
     "frontal_names": ["Fp1", "Fp2"],
     "posterior_names": ["O1", "Oz", "O2", "Pz"],
@@ -93,32 +93,36 @@ def alpha_ratio(data: np.ndarray, sample_rate: float, band: tuple[float, float] 
     return max(0.0, min(1.0, alpha / max(total, 1e-12)))
 
 
-def blink_features(data: np.ndarray, sample_rate: float, smoothing_seconds: float) -> tuple[float, float, float, float, float]:
-    """Return transient peak, channel agreement, correlation, compactness and peak position."""
+def blink_features(data: np.ndarray, sample_rate: float, smoothing_seconds: float) -> tuple[float, float, float, float, float, float, float]:
+    """Return low-latency negative transient features for hardware channels 1/2."""
     if data.ndim == 1:
         data = data[:, None]
-    if data.shape[0] < 16 or data.shape[1] == 0:
-        return 0.0, 0.0, 0.0, 0.0, 0.5
+    data = data[:, :2]
+    if data.shape[0] < 16 or data.shape[1] < 2:
+        return 0.0, 0.0, 0.0, 0.0, 0.5, 0.0, 1.0
     centered = data - np.median(data, axis=0, keepdims=True)
-    time_axis = np.linspace(-1.0, 1.0, data.shape[0])
-    design = np.column_stack((np.ones(data.shape[0]), time_axis))
-    detrended = centered - design @ np.linalg.lstsq(design, centered, rcond=None)[0]
     smooth_size = max(5, int(round(sample_rate * smoothing_seconds)))
     if smooth_size % 2 == 0:
         smooth_size += 1
     kernel = np.ones(smooth_size, dtype=float) / smooth_size
-    smoothed = np.column_stack([np.convolve(detrended[:, i], kernel, mode="same") for i in range(detrended.shape[1])])
+    smoothed = np.column_stack([np.convolve(centered[:, i], kernel, mode="same") for i in range(centered.shape[1])])
     smoothed -= np.median(smoothed, axis=0, keepdims=True)
-    channel_peaks = np.max(np.abs(smoothed), axis=0)
+    channel_peaks = -np.min(smoothed, axis=0)
     peak = float(np.median(channel_peaks))
     agreement = float(np.min(channel_peaks) / max(float(np.max(channel_peaks)), 1e-9))
     correlation = 0.0
     if smoothed.shape[1] >= 2 and np.std(smoothed[:, 0]) > 1e-9 and np.std(smoothed[:, 1]) > 1e-9:
         correlation = float(np.corrcoef(smoothed[:, 0], smoothed[:, 1])[0, 1])
     common = np.median(smoothed, axis=1)
-    peak_position = float(np.argmax(np.abs(common)) / max(len(common) - 1, 1))
+    negative_peak = max(0.0, float(-np.min(common)))
+    positive_peak = max(0.0, float(np.max(common)))
+    peak_index = int(np.argmin(common))
+    peak_position = float(peak_index / max(len(common) - 1, 1))
     compactness = float(np.mean(np.abs(common) >= max(peak * 0.35, 1e-9)))
-    return peak, agreement, correlation, compactness, peak_position
+    polarity_ratio = negative_peak / max(positive_peak, 1e-9)
+    pre_end = max(16, peak_index - 10)
+    pre_noise_ratio = float(np.std(common[:pre_end]) / max(negative_peak, 1e-9))
+    return peak, agreement, correlation, compactness, peak_position, polarity_ratio, pre_noise_ratio
 
 
 class BlinkDetector:
@@ -137,9 +141,12 @@ class BlinkDetector:
     def update(self, data: np.ndarray, sample_rate: float, now: float) -> tuple[bool, float, float]:
         if data.size == 0:
             return False, 0.0, 0.0
+        if data.ndim != 2 or data.shape[1] < 2:
+            return False, 0.0, 0.0
+        data = data[:, :2]
         if self.started_at is None:
             self.started_at = now
-        current, agreement, correlation, compactness, peak_position = blink_features(
+        current, agreement, correlation, compactness, peak_position, polarity_ratio, pre_noise_ratio = blink_features(
             data, sample_rate, float(self.config["blink_smoothing_seconds"])
         )
         elapsed = now - self.started_at
@@ -153,8 +160,9 @@ class BlinkDetector:
             values = np.asarray(list(self.calibration)[-calibration_window:], dtype=float)
             if values.size < 8:
                 return False, 0.0, current
-            self.baseline = float(np.median(values))
-            self.baseline_mad = max(1.4826 * float(np.median(np.abs(values - self.baseline))), 1.0)
+            self.baseline = float(np.percentile(values, 35.0))
+            stable_values = values[values <= np.percentile(values, 75.0)]
+            self.baseline_mad = max(1.4826 * float(np.median(np.abs(stable_values - self.baseline))), 1.0)
         baseline = self.baseline
         mad = self.baseline_mad
         z = (current - baseline) / mad
@@ -167,10 +175,12 @@ class BlinkDetector:
         detected = (
             current >= threshold
             and z >= float(self.config["blink_z_threshold"])
-            and agreement >= 0.35
+            and agreement >= 0.25
             and correlation >= 0.65
-            and 0.08 <= peak_position <= 0.92
+            and 0.90 <= peak_position <= 0.99
             and 0.10 <= compactness <= 0.80
+            and polarity_ratio >= float(self.config.get("blink_negative_polarity_ratio", 3.0))
+            and pre_noise_ratio <= float(self.config.get("blink_max_pre_noise_ratio", 0.35))
         )
         confirmations = max(1, int(self.config["blink_confirmations"]))
         self.confirm_count = self.confirm_count + 1 if detected else 0
@@ -276,7 +286,9 @@ class Bridge:
                 inlet = StreamInlet(streams[0], max_buflen=60, recover=True)
                 info, sample_rate = inlet.info(), float(inlet.info().nominal_srate() or self.config["sample_rate_fallback"])
                 labels, count = channel_labels(info), info.channel_count()
-                frontal = choose_channels(labels, self.config["frontal_names"], count, self.config["frontal_indices"])
+                # Blink detection is fixed to hardware channels 1 and 2.
+                # Do not let stream labels or posterior noise change this mapping.
+                frontal = [0, 1] if count >= 2 else []
                 posterior = choose_channels(labels, self.config["posterior_names"], count, self.config["posterior_indices"])
                 self.set_lsl_status(True, "LSL Alpha EEG 已连接", info.name())
                 print(f"[LSL] {info.name()} | {sample_rate:g} Hz | frontal={frontal} posterior={posterior}")

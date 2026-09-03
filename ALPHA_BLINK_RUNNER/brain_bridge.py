@@ -37,6 +37,9 @@ DEFAULT_CONFIG: dict[str, Any] = {
     "blink_window_seconds": 0.45, "alpha_window_seconds": 0.90,
     "eval_interval_seconds": 0.10, "blink_absolute_threshold": 35.0,
     "blink_z_threshold": 5.0, "blink_release_z": 1.8, "blink_refractory_seconds": 0.55,
+    "blink_warmup_seconds": 4.0, "blink_calibration_window_seconds": 1.5,
+    "blink_min_peak_ratio": 8.0, "blink_confirmations": 2,
+    "blink_smoothing_seconds": 0.04,
     "alpha_band": [8.0, 13.0], "alpha_ready_ratio": 0.16,
     "frontal_names": ["Fp1", "Fp2"],
     "posterior_names": ["O1", "Oz", "O2", "Pz"],
@@ -90,36 +93,100 @@ def alpha_ratio(data: np.ndarray, sample_rate: float, band: tuple[float, float] 
     return max(0.0, min(1.0, alpha / max(total, 1e-12)))
 
 
+def blink_features(data: np.ndarray, sample_rate: float, smoothing_seconds: float) -> tuple[float, float, float, float, float]:
+    """Return transient peak, channel agreement, correlation, compactness and peak position."""
+    if data.ndim == 1:
+        data = data[:, None]
+    if data.shape[0] < 16 or data.shape[1] == 0:
+        return 0.0, 0.0, 0.0, 0.0, 0.5
+    centered = data - np.median(data, axis=0, keepdims=True)
+    time_axis = np.linspace(-1.0, 1.0, data.shape[0])
+    design = np.column_stack((np.ones(data.shape[0]), time_axis))
+    detrended = centered - design @ np.linalg.lstsq(design, centered, rcond=None)[0]
+    smooth_size = max(5, int(round(sample_rate * smoothing_seconds)))
+    if smooth_size % 2 == 0:
+        smooth_size += 1
+    kernel = np.ones(smooth_size, dtype=float) / smooth_size
+    smoothed = np.column_stack([np.convolve(detrended[:, i], kernel, mode="same") for i in range(detrended.shape[1])])
+    smoothed -= np.median(smoothed, axis=0, keepdims=True)
+    channel_peaks = np.max(np.abs(smoothed), axis=0)
+    peak = float(np.median(channel_peaks))
+    agreement = float(np.min(channel_peaks) / max(float(np.max(channel_peaks)), 1e-9))
+    correlation = 0.0
+    if smoothed.shape[1] >= 2 and np.std(smoothed[:, 0]) > 1e-9 and np.std(smoothed[:, 1]) > 1e-9:
+        correlation = float(np.corrcoef(smoothed[:, 0], smoothed[:, 1])[0, 1])
+    common = np.median(smoothed, axis=1)
+    peak_position = float(np.argmax(np.abs(common)) / max(len(common) - 1, 1))
+    compactness = float(np.mean(np.abs(common) >= max(peak * 0.35, 1e-9)))
+    return peak, agreement, correlation, compactness, peak_position
+
+
 class BlinkDetector:
     def __init__(self, config: dict[str, Any]) -> None:
         self.config = config
         self.history: deque[float] = deque(maxlen=45)
+        self.calibration: deque[float] = deque(maxlen=45)
         self.latched = False
         self.last_event = -1e9
+        self.started_at: float | None = None
+        self.baseline: float | None = None
+        self.baseline_mad = 1.0
+        self.confirm_count = 0
+        self.release_count = 0
 
     def update(self, data: np.ndarray, sample_rate: float, now: float) -> tuple[bool, float, float]:
         if data.size == 0:
             return False, 0.0, 0.0
-        centered = data - np.median(data, axis=0, keepdims=True)
-        ranges = np.percentile(centered, 95, axis=0) - np.percentile(centered, 5, axis=0)
-        current = float(np.median(ranges))
+        if self.started_at is None:
+            self.started_at = now
+        current, agreement, correlation, compactness, peak_position = blink_features(
+            data, sample_rate, float(self.config["blink_smoothing_seconds"])
+        )
+        elapsed = now - self.started_at
         self.history.append(current)
-        history = np.asarray(list(self.history)[:-1], dtype=float)
-        if history.size < 8:
+        warmup = float(self.config["blink_warmup_seconds"])
+        if elapsed < warmup:
+            self.calibration.append(current)
             return False, 0.0, current
-        baseline = float(np.median(history))
-        mad = max(1.4826 * float(np.median(np.abs(history - baseline))), 1.0)
+        if self.baseline is None:
+            calibration_window = max(8, int(round(float(self.config["blink_calibration_window_seconds"]) / max(float(self.config["eval_interval_seconds"]), 0.01))))
+            values = np.asarray(list(self.calibration)[-calibration_window:], dtype=float)
+            if values.size < 8:
+                return False, 0.0, current
+            self.baseline = float(np.median(values))
+            self.baseline_mad = max(1.4826 * float(np.median(np.abs(values - self.baseline))), 1.0)
+        baseline = self.baseline
+        mad = self.baseline_mad
         z = (current - baseline) / mad
-        threshold = max(float(self.config["blink_absolute_threshold"]), baseline + float(self.config["blink_z_threshold"]) * mad)
+        threshold = max(
+            float(self.config["blink_absolute_threshold"]),
+            baseline * float(self.config["blink_min_peak_ratio"]),
+            baseline + float(self.config["blink_z_threshold"]) * mad,
+        )
         confidence = max(0.0, min(1.0, (current - threshold) / max(threshold, 1.0) + 0.55))
-        detected = current >= threshold and z >= float(self.config["blink_z_threshold"])
+        detected = (
+            current >= threshold
+            and z >= float(self.config["blink_z_threshold"])
+            and agreement >= 0.35
+            and correlation >= 0.65
+            and 0.08 <= peak_position <= 0.92
+            and 0.10 <= compactness <= 0.80
+        )
+        confirmations = max(1, int(self.config["blink_confirmations"]))
+        self.confirm_count = self.confirm_count + 1 if detected else 0
         if self.latched:
-            if z <= float(self.config["blink_release_z"]):
+            if not detected:
+                self.release_count += 1
+            else:
+                self.release_count = 0
+            if self.release_count >= 2:
                 self.latched = False
-            detected = False
-        if detected and now - self.last_event >= float(self.config["blink_refractory_seconds"]):
+                self.release_count = 0
+            self.confirm_count = 0
+        if detected and self.confirm_count >= confirmations and now - self.last_event >= float(self.config["blink_refractory_seconds"]) and not self.latched:
             self.latched = True
             self.last_event = now
+            self.confirm_count = 0
             return True, confidence, current
         return False, confidence, current
 

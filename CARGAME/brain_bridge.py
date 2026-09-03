@@ -1,19 +1,19 @@
-"""Low-latency OpenBCI LSL / OpenViBE bridge for Alpha Dash.
+"""OpenBCI LSL -> SSVEP classifier -> EEG Horizon Run WebSocket bridge.
 
-Pipeline: OpenBCI GUI -> LSL -> (OpenViBE Python Box or this fallback) -> WS.
-Frontal channels detect blink transients; posterior channels estimate 8-13 Hz
-alpha relative power. The detector uses robust MAD thresholds and hysteresis.
+The browser game stays independent from hardware. This process reads an EEG
+stream published by OpenBCI GUI (LSL), detects 20/15 Hz SSVEP responses over
+posterior channels, and sends confirmed left/right commands to the browser.
 """
 from __future__ import annotations
 
 import argparse
 import asyncio
 import json
+import math
 import signal
 import sys
 import threading
 import time
-from collections import deque
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any
@@ -26,28 +26,36 @@ try:
 except ImportError:
     StreamInlet = None
     resolve_byprop = None
+
 try:
     import websockets
 except ImportError:
     websockets = None
 
-DEFAULT_CONFIG: dict[str, Any] = {
-    "lsl_stream_type": "EEG", "sample_rate_fallback": 250,
-    "blink_window_seconds": 0.45, "alpha_window_seconds": 0.90,
-    "eval_interval_seconds": 0.10, "blink_absolute_threshold": 35.0,
-    "blink_z_threshold": 5.0, "blink_release_z": 1.8, "blink_refractory_seconds": 0.55,
-    "alpha_band": [8.0, 13.0], "alpha_ready_ratio": 0.16,
-    "frontal_names": ["Fp1", "Fp2", "AF3", "AF4"],
-    "posterior_names": ["O1", "Oz", "O2", "Pz", "PO3", "PO4"],
-    "frontal_indices": [0, 1], "posterior_indices": [2, 3],
-    "websocket_host": "127.0.0.1", "websocket_port": 8765, "openvibe_command_port": 8766,
+
+DEFAULT_CONFIG = {
+    "lsl_stream_type": "EEG",
+    "sample_rate_fallback": 250,
+    "window_seconds": 1.5,
+    "eval_interval_seconds": 0.25,
+    "min_score": 1.45,
+    "min_margin": 0.18,
+    "confirmations": 2,
+    "cooldown_seconds": 0.8,
+    "frequencies": {"left": 20, "right": 15},
+    "posterior_names": ["P01", "P02", "P03", "P04", "PO1", "PO2", "PO3", "PO4"],
+    "posterior_indices": [1, 3, 5],
+    "websocket_host": "127.0.0.1",
+    "websocket_port": 8765,
+    "openvibe_command_port": 8766,
 }
 
 
 def load_config(path: Path) -> dict[str, Any]:
-    config = {**DEFAULT_CONFIG}
+    config = dict(DEFAULT_CONFIG)
     if path.exists():
         config.update(json.loads(path.read_text(encoding="utf-8-sig")))
+    config["frequencies"] = {**DEFAULT_CONFIG["frequencies"], **config.get("frequencies", {})}
     return config
 
 
@@ -64,71 +72,61 @@ def channel_labels(info: Any) -> list[str]:
     return labels
 
 
-def choose_channels(labels: list[str], requested: list[str], count: int, fallback: list[int]) -> list[int]:
-    normalized = [item.upper().replace(" ", "") for item in labels]
-    selected = [i for i, item in enumerate(normalized) if item in {name.upper().replace(" ", "") for name in requested}]
+def choose_channels(labels: list[str], requested: list[str], count: int, fallback_indices: list[int] | None = None) -> list[int]:
+    upper = [label.upper().replace(" ", "") for label in labels]
+    selected = [i for i, label in enumerate(upper) if any(name.upper().replace(" ", "") == label for name in requested)]
     if selected:
         return selected
-    selected = [i for i in fallback if 0 <= i < count]
-    return selected or list(range(min(count, 2)))
+    if fallback_indices:
+        selected = [index for index in fallback_indices if 0 <= index < count]
+        if selected:
+            return selected
+    # A safe fallback for unnamed four-channel headbands: use all available channels.
+    return list(range(min(count, 4)))
 
 
-def alpha_ratio(data: np.ndarray, sample_rate: float, band: tuple[float, float] = (8.0, 13.0)) -> float:
-    """Windowed Welch-like relative alpha power with a Hann window."""
-    if data.shape[0] < max(32, int(sample_rate * 0.45)):
+def spectral_score(data: np.ndarray, sample_rate: float, frequency: float) -> float:
+    """Return a normalized fundamental + harmonic SSVEP score."""
+    samples = data.shape[0]
+    if samples < 32:
         return 0.0
-    centered = data - np.median(data, axis=0, keepdims=True)
-    nfft = max(256, 1 << int(np.ceil(np.log2(centered.shape[0]))))
-    power = np.abs(np.fft.rfft(centered * np.hanning(centered.shape[0])[:, None], n=nfft, axis=0)) ** 2
-    freqs = np.fft.rfftfreq(nfft, 1.0 / sample_rate)
-    total_mask = (freqs >= 4.0) & (freqs <= 30.0)
-    alpha_mask = (freqs >= band[0]) & (freqs <= band[1])
-    total = float(np.sum(power[total_mask])) if np.any(total_mask) else 1.0
-    alpha = float(np.sum(power[alpha_mask])) if np.any(alpha_mask) else 0.0
-    return max(0.0, min(1.0, alpha / max(total, 1e-12)))
+    window = np.hanning(samples)[:, None]
+    spectrum = np.abs(np.fft.rfft((data - data.mean(axis=0)) * window, axis=0))
+    bins = np.fft.rfftfreq(samples, 1.0 / sample_rate)
 
+    def band_amplitude(target: float) -> float:
+        if target >= sample_rate / 2:
+            return 0.0
+        width = max(0.45, sample_rate / samples * 1.5)
+        mask = np.abs(bins - target) <= width
+        return float(np.mean(np.max(spectrum[mask], axis=0))) if np.any(mask) else 0.0
 
-class BlinkDetector:
-    def __init__(self, config: dict[str, Any]) -> None:
-        self.config = config
-        self.history: deque[float] = deque(maxlen=45)
-        self.latched = False
-        self.last_event = -1e9
-
-    def update(self, data: np.ndarray, sample_rate: float, now: float) -> tuple[bool, float, float]:
-        if data.size == 0:
-            return False, 0.0, 0.0
-        centered = data - np.median(data, axis=0, keepdims=True)
-        ranges = np.percentile(centered, 95, axis=0) - np.percentile(centered, 5, axis=0)
-        current = float(np.median(ranges))
-        self.history.append(current)
-        history = np.asarray(list(self.history)[:-1], dtype=float)
-        if history.size < 8:
-            return False, 0.0, current
-        baseline = float(np.median(history))
-        mad = max(1.4826 * float(np.median(np.abs(history - baseline))), 1.0)
-        z = (current - baseline) / mad
-        threshold = max(float(self.config["blink_absolute_threshold"]), baseline + float(self.config["blink_z_threshold"]) * mad)
-        confidence = max(0.0, min(1.0, (current - threshold) / max(threshold, 1.0) + 0.55))
-        detected = current >= threshold and z >= float(self.config["blink_z_threshold"])
-        if self.latched:
-            if z <= float(self.config["blink_release_z"]):
-                self.latched = False
-            detected = False
-        if detected and now - self.last_event >= float(self.config["blink_refractory_seconds"]):
-            self.latched = True
-            self.last_event = now
-            return True, confidence, current
-        return False, confidence, current
+    fundamental = band_amplitude(frequency)
+    harmonic = band_amplitude(frequency * 2.0)
+    low = max(1, int(round(6 * samples / sample_rate)))
+    high = min(spectrum.shape[0] - 1, int(round(30 * samples / sample_rate)))
+    background = float(np.median(spectrum[low:high])) if high > low else 1.0
+    return (fundamental + 0.45 * harmonic) / max(background, 1e-9)
 
 
 class Bridge:
     def __init__(self, config: dict[str, Any], simulate: bool = False) -> None:
-        self.config, self.simulate = config, simulate
+        self.config = config
+        self.simulate = simulate
         self.clients: set[Any] = set()
-        self.running, self.loop = True, None
-        self.lsl_connected, self.lsl_message = False, "尚未找到 LSL EEG 流"
-        self.openvibe_connected, self.openvibe_message, self.openvibe_last_seen = False, "尚未收到 OpenViBE 信号", 0.0
+        self.running = True
+        self.loop: asyncio.AbstractEventLoop | None = None
+        self.lsl_connected = False
+        self.lsl_message = "尚未找到 LSL EEG 流"
+        self.openvibe_connected = False
+        self.openvibe_message = "尚未收到 OpenViBE 信号"
+        self.openvibe_last_seen = 0.0
+        self.calibration_lock = threading.Lock()
+        self.calibration_phase_index = -1
+        self.calibration_started_at = 0.0
+        self.calibration_phase_end = 0.0
+        self.calibration_complete = False
+        self.calibration_phases = [("neutral", 15.0), ("left", 20.0), ("right", 20.0)]
 
     async def websocket_handler(self, websocket: Any, path: str | None = None) -> None:
         self.clients.add(websocket)
@@ -142,9 +140,8 @@ class Bridge:
         if not self.clients:
             return
         message = json.dumps(payload, ensure_ascii=False)
-        clients = tuple(self.clients)
-        results = await asyncio.gather(*(client.send(message) for client in clients), return_exceptions=True)
-        for client, result in zip(clients, results):
+        results = await asyncio.gather(*(client.send(message) for client in tuple(self.clients)), return_exceptions=True)
+        for client, result in zip(tuple(self.clients), results):
             if isinstance(result, Exception):
                 self.clients.discard(client)
 
@@ -152,43 +149,94 @@ class Bridge:
         if self.loop and self.loop.is_running():
             asyncio.run_coroutine_threadsafe(self.broadcast(payload), self.loop)
 
-    def set_lsl_status(self, connected: bool, message: str, stream: str = "") -> None:
-        self.lsl_connected, self.lsl_message = connected, message
-        self.send(self.connection_payload("status", stream_name=stream))
+    def set_lsl_status(self, connected: bool, message: str, stream_name: str = "") -> None:
+        self.lsl_connected = connected
+        self.lsl_message = message
+        self.send(self.connection_payload("status", stream_name=stream_name))
 
-    def set_openvibe_status(self, connected: bool, message: str = "") -> None:
-        self.openvibe_connected, self.openvibe_message = connected, message
+    def set_openvibe_status(self, connected: bool, message: str) -> None:
+        self.openvibe_connected = connected
+        self.openvibe_message = message
         if connected:
             self.openvibe_last_seen = time.monotonic()
         self.send(self.connection_payload("status", source="OpenViBE"))
 
     def openvibe_watchdog(self) -> None:
         while self.running:
-            if self.openvibe_connected and time.monotonic() - self.openvibe_last_seen > 5:
+            if self.openvibe_connected and time.monotonic() - self.openvibe_last_seen > 5.0:
                 self.set_openvibe_status(False, "OpenViBE 信号已停止")
-            time.sleep(1)
+            time.sleep(1.0)
+
+    def calibration_snapshot(self) -> dict[str, Any]:
+        with self.calibration_lock:
+            now = time.monotonic()
+            if self.calibration_phase_index >= 0 and self.calibration_phase_index < len(self.calibration_phases):
+                while now >= self.calibration_phase_end:
+                    self.calibration_phase_index += 1
+                    if self.calibration_phase_index >= len(self.calibration_phases):
+                        self.calibration_complete = True
+                        break
+                    self.calibration_phase_end += self.calibration_phases[self.calibration_phase_index][1]
+            active = 0 <= self.calibration_phase_index < len(self.calibration_phases)
+            if active:
+                phase, duration = self.calibration_phases[self.calibration_phase_index]
+                remaining = max(0.0, self.calibration_phase_end - now)
+                labels = {"neutral": "放松，不要注视任何按钮", "left": "请持续注视左道按钮", "right": "请持续注视右道按钮"}
+                message = labels[phase]
+            else:
+                phase, duration, remaining = ("done", 0.0, 0.0) if self.calibration_complete else ("idle", 0.0, 0.0)
+                message = "校准完成，可以开始游戏" if self.calibration_complete else "等待开始校准"
+            total = sum(item[1] for item in self.calibration_phases)
+            elapsed = 0.0 if self.calibration_phase_index < 0 else min(total, now - self.calibration_started_at)
+            return {"active": active, "complete": self.calibration_complete, "phase": phase, "message": message, "remaining": round(remaining, 1), "elapsed": round(elapsed, 1), "total": total}
+
+    def start_calibration(self) -> dict[str, Any]:
+        with self.calibration_lock:
+            self.calibration_phase_index = 0
+            self.calibration_started_at = time.monotonic()
+            self.calibration_phase_end = self.calibration_started_at + self.calibration_phases[0][1]
+            self.calibration_complete = False
+        snapshot = self.calibration_snapshot()
+        self.send({"type": "calibration", **snapshot})
+        return snapshot
 
     def connection_payload(self, message_type: str, stream_name: str = "", source: str = "") -> dict[str, Any]:
-        return {"type": message_type, "source": source or "OpenBCI Alpha Blink bridge", "lsl_connected": self.lsl_connected, "openvibe_connected": self.openvibe_connected, "message": self.openvibe_message if self.openvibe_connected else self.lsl_message, "stream": stream_name or ("SIMULATED EEG" if self.simulate else ""), "simulated": self.simulate, "timestamp": time.time()}
+        return {
+            "type": message_type,
+            "source": source or "OpenBCI LSL SSVEP bridge",
+            "lsl_connected": self.lsl_connected,
+            "openvibe_connected": self.openvibe_connected,
+            "message": self.openvibe_message if self.openvibe_connected else self.lsl_message,
+            "stream": stream_name or ("SIMULATED EEG" if self.simulate else ""),
+            "simulated": self.simulate,
+            "timestamp": time.time(),
+        }
 
-    def receive_openvibe(self, event: str | None = None, confidence: float = 0.0, alpha_ratio_value: float | None = None, blink_score: float | None = None) -> None:
-        self.set_openvibe_status(True, "OpenViBE Alpha/Blink Python Box 已连接")
-        if alpha_ratio_value is not None:
-            ratio = max(0.0, min(1.0, float(alpha_ratio_value)))
-            self.send({"type": "telemetry", "alpha_ratio": ratio, "alpha_confidence": max(0.0, min(1.0, ratio / .32)), "source": "OpenViBE", "timestamp": time.time()})
-        if event == "blink":
-            self.send({"type": "blink", "blink_confidence": max(0.0, min(1.0, float(confidence))), "blink_score": blink_score, "source": "OpenViBE", "timestamp": time.time()})
+    def receive_openvibe(self, command: str | None = None, confidence: float = 0.0, scores: Any = None) -> None:
+        self.set_openvibe_status(True, "OpenViBE Python Box 已连接")
+        if command not in {"left", "right"}:
+            return
+        payload: dict[str, Any] = {
+            "type": "command",
+            "command": command,
+            "confidence": round(max(0.0, min(1.0, confidence)), 3),
+            "source": "OpenViBE",
+            "openvibe_connected": True,
+            "timestamp": time.time(),
+        }
+        if isinstance(scores, dict):
+            payload["scores"] = scores
+        self.send(payload)
 
     def simulate_loop(self) -> None:
-        self.set_lsl_status(True, "模拟 Alpha EEG 已连接", "SIMULATED EEG")
-        next_blink = time.monotonic() + 1.4
+        self.set_lsl_status(True, "模拟 EEG 已连接", "SIMULATED EEG")
+        commands = [("right", 15), ("left", 20)]
+        index = 0
         while self.running:
-            now = time.monotonic()
-            self.send({"type": "telemetry", "alpha_ratio": .24 + .04 * np.sin(now), "alpha_confidence": .78, "blink_confidence": .0, "simulated": True, "timestamp": time.time()})
-            if now >= next_blink:
-                self.send({"type": "blink", "blink_confidence": .94, "blink_score": 9.0, "simulated": True, "timestamp": time.time()})
-                next_blink = now + 2.4
-            time.sleep(.1)
+            command, frequency = commands[index % len(commands)]
+            self.send({"type": "command", "command": command, "frequency": frequency, "confidence": 0.92, "simulated": True, "timestamp": time.time()})
+            index += 1
+            time.sleep(4.0)
 
     def read_lsl_loop(self) -> None:
         if resolve_byprop is None or StreamInlet is None:
@@ -196,69 +244,183 @@ class Bridge:
             while self.running:
                 time.sleep(5)
             return
+
         while self.running:
-            print(f"[LSL] 查找 type={self.config['lsl_stream_type']} 的 EEG 流…")
+            print(f"[LSL] 正在查找 type={self.config['lsl_stream_type']} 的 EEG 流…")
             streams = resolve_byprop("type", self.config["lsl_stream_type"], timeout=4)
             if not streams:
                 self.set_lsl_status(False, "未找到 LSL EEG 流，请在 OpenBCI GUI 开启 LSL")
-                time.sleep(3)
+                print("[LSL] 暂无 EEG 流，4 秒后重试。", file=sys.stderr)
+                time.sleep(4)
                 continue
+
             try:
                 inlet = StreamInlet(streams[0], max_buflen=60, recover=True)
-                info, sample_rate = inlet.info(), float(inlet.info().nominal_srate() or self.config["sample_rate_fallback"])
-                labels, count = channel_labels(info), info.channel_count()
-                frontal = choose_channels(labels, self.config["frontal_names"], count, self.config["frontal_indices"])
-                posterior = choose_channels(labels, self.config["posterior_names"], count, self.config["posterior_indices"])
-                self.set_lsl_status(True, "LSL Alpha EEG 已连接", info.name())
-                print(f"[LSL] {info.name()} | {sample_rate:g} Hz | frontal={frontal} posterior={posterior}")
+                info = inlet.info()
+                sample_rate = float(info.nominal_srate() or self.config["sample_rate_fallback"])
+                labels = channel_labels(info)
+                indices = choose_channels(labels, self.config["posterior_names"], info.channel_count(), self.config.get("posterior_indices"))
+                self.set_lsl_status(True, "LSL EEG 已连接", info.name())
+                print(f"[LSL] 已连接: {info.name()} | {sample_rate:g} Hz | 通道: {labels or '未命名'}")
+                print(f"[SSVEP] 使用通道索引: {indices} | 目标频率: {self.config['frequencies']}")
             except Exception as error:
-                self.set_lsl_status(False, f"LSL 连接失败：{error}"); time.sleep(3); continue
-            blink_size=max(64,int(sample_rate*self.config["blink_window_seconds"])); alpha_size=max(128,int(sample_rate*self.config["alpha_window_seconds"])); buffer: np.ndarray|None=None; detector=BlinkDetector(self.config); last_eval=0.0
+                self.set_lsl_status(False, f"LSL 连接失败：{error}")
+                time.sleep(3)
+                continue
+
+            window_size = max(64, int(sample_rate * self.config["window_seconds"]))
+            buffer: np.ndarray | None = None
+            last_eval = 0.0
+            candidate: str | None = None
+            candidate_count = 0
+            last_command = 0.0
+
             while self.running:
                 try:
-                    chunk,_=inlet.pull_chunk(timeout=.5,max_samples=max(32,int(sample_rate*.25)))
-                    if not chunk: continue
-                    samples=np.asarray(chunk,dtype=float); buffer=samples if buffer is None else np.vstack((buffer,samples)); buffer=buffer[-max(blink_size,alpha_size):]
-                    now=time.time()
-                    if now-last_eval<float(self.config["eval_interval_seconds"]): continue
-                    last_eval=now
-                    blink_data=buffer[-blink_size:,frontal]; alpha_data=buffer[-alpha_size:,posterior]; event,confidence,score=detector.update(blink_data,sample_rate,now); ratio=alpha_ratio(alpha_data,sample_rate,tuple(self.config["alpha_band"]))
-                    self.send({"type":"telemetry","alpha_ratio":ratio,"alpha_confidence":max(0.,min(1.,ratio/.32)),"blink_confidence":confidence,"blink_score":score,"source":"LSL","timestamp":now})
-                    if event:
-                        self.send({"type":"blink","blink_confidence":round(confidence,3),"blink_score":round(score,2),"source":"LSL","timestamp":now}); print(f"[BLINK] confidence={confidence:.2f} score={score:.1f}")
+                    chunk, _ = inlet.pull_chunk(timeout=1.0, max_samples=max(32, int(sample_rate * 0.5)))
+                    if not chunk:
+                        continue
+                    samples = np.asarray(chunk, dtype=float)
+                    samples = samples[:, indices]
+                    buffer = samples if buffer is None else np.vstack((buffer, samples))
+                    if buffer.shape[0] > window_size:
+                        buffer = buffer[-window_size:]
+                    now = time.time()
+                    if buffer.shape[0] < window_size or now - last_eval < self.config["eval_interval_seconds"]:
+                        continue
+                    last_eval = now
+                    scores = {command: spectral_score(buffer, sample_rate, frequency) for command, frequency in self.config["frequencies"].items()}
+                    ordered = sorted(scores.items(), key=lambda item: item[1], reverse=True)
+                    winner, best = ordered[0]
+                    second = ordered[1][1]
+                    confidence = clamp((best - second) / max(best, 1e-9), 0.0, 1.0)
+                    accepted = best >= self.config["min_score"] and confidence >= self.config["min_margin"]
+                    if accepted and winner == candidate:
+                        candidate_count += 1
+                    elif accepted:
+                        candidate, candidate_count = winner, 1
+                    else:
+                        candidate, candidate_count = None, 0
+                    if accepted and candidate_count >= self.config["confirmations"] and now - last_command >= self.config["cooldown_seconds"]:
+                        frequency = self.config["frequencies"][winner]
+                        self.send({"type": "command", "command": winner, "frequency": frequency, "confidence": round(confidence, 3), "scores": scores, "timestamp": now})
+                        print(f"[COMMAND] {winner} @ {frequency} Hz | confidence={confidence:.2f}")
+                        last_command = now
+                        candidate_count = 0
                 except Exception as error:
-                    self.set_lsl_status(False, f"LSL 数据流断开：{error}"); print(f"[LSL] 数据流断开：{error}",file=sys.stderr); break
+                    self.set_lsl_status(False, f"LSL 数据流断开：{error}")
+                    print(f"[LSL] 数据流断开，稍后重连：{error}", file=sys.stderr)
+                    break
 
     def stop(self, *_: Any) -> None:
-        self.running=False
+        self.running = False
 
 
 class OpenViBECommandHandler(BaseHTTPRequestHandler):
-    bridge: Bridge|None=None
-    def send_json(self,payload:dict[str,Any],status:int=200)->None:
-        body=json.dumps(payload,ensure_ascii=False).encode();self.send_response(status);self.send_header("Content-Type","application/json; charset=utf-8");self.send_header("Cache-Control","no-store");self.send_header("Access-Control-Allow-Origin","*");self.send_header("Content-Length",str(len(body)));self.end_headers();self.wfile.write(body)
-    def do_GET(self)->None:
-        if not self.bridge:self.send_json({"ok":False},503);return
-        query=parse_qs(urlparse(self.path).query);path=urlparse(self.path).path
-        if path=="/health":self.send_json({"ok":True,**self.bridge.connection_payload("status")});return
-        event="blink" if path=="/openvibe/blink" else None
-        if path in {"/openvibe/heartbeat","/openvibe/alpha"}: event=None
-        if path in {"/openvibe/blink","/openvibe/heartbeat","/openvibe/alpha"}:
-            self.bridge.receive_openvibe(event, float(query.get("confidence",[0])[0]), float(query["alpha_ratio"][0]) if "alpha_ratio" in query else None, float(query["blink_score"][0]) if "blink_score" in query else None);self.send_json({"ok":True,**self.bridge.connection_payload("status",source="OpenViBE")});return
-        self.send_json({"ok":False,"error":"unknown endpoint"},404)
-    def do_POST(self)->None:self.do_GET()
-    def log_message(self,format_string:str,*args:Any)->None:return
+    bridge: Bridge | None = None
+
+    def send_json(self, payload: dict[str, Any], status: int = 200) -> None:
+        body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
+        self.send_response(status)
+        self.send_header("Content-Type", "application/json; charset=utf-8")
+        self.send_header("Cache-Control", "no-store")
+        self.send_header("Access-Control-Allow-Origin", "*")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
+    def request_values(self) -> dict[str, str]:
+        values = {key: items[0] for key, items in parse_qs(urlparse(self.path).query).items() if items}
+        if self.command == "POST":
+            length = int(self.headers.get("Content-Length", "0"))
+            body = self.rfile.read(length).decode("utf-8") if length else ""
+            values.update({key: items[0] for key, items in parse_qs(body).items() if items})
+        return values
+
+    def handle_request(self) -> None:
+        bridge = self.bridge
+        if bridge is None:
+            self.send_json({"ok": False, "error": "bridge_not_ready"}, 503)
+            return
+        path = urlparse(self.path).path
+        if path == "/health":
+            self.send_json({"ok": True, **bridge.connection_payload("health")})
+            return
+        if path == "/calibration/start":
+            self.send_json({"ok": True, "type": "calibration", **bridge.start_calibration()})
+            return
+        if path == "/calibration/state":
+            self.send_json({"ok": True, "type": "calibration", **bridge.calibration_snapshot()})
+            return
+        if path not in {"/openvibe/heartbeat", "/openvibe/command"}:
+            self.send_json({"ok": False, "error": "not_found"}, 404)
+            return
+        values = self.request_values()
+        command = values.get("command") if path == "/openvibe/command" else None
+        try:
+            confidence = float(values.get("confidence", "0"))
+        except ValueError:
+            confidence = 0.0
+        scores: Any = None
+        if values.get("scores"):
+            try:
+                scores = json.loads(values["scores"])
+            except json.JSONDecodeError:
+                scores = None
+        bridge.receive_openvibe(command, confidence, scores)
+        self.send_json({"ok": True, "accepted": command in {"left", "right"}, **bridge.connection_payload("status", source="OpenViBE")})
+
+    def do_GET(self) -> None:
+        self.handle_request()
+
+    def do_POST(self) -> None:
+        self.handle_request()
+
+    def log_message(self, format_string: str, *args: Any) -> None:
+        return
 
 
-async def main()->None:
-    parser=argparse.ArgumentParser(description="OpenBCI Alpha/Blink WebSocket bridge");parser.add_argument("--config",default="ssvep_config.json");parser.add_argument("--simulate",action="store_true");args=parser.parse_args()
-    if websockets is None:raise SystemExit("缺少 websockets，请先安装 requirements.txt")
-    config=load_config(Path(args.config));bridge=Bridge(config,args.simulate);server=ThreadingHTTPServer((config["websocket_host"],int(config["openvibe_command_port"])),OpenViBECommandHandler);OpenViBECommandHandler.bridge=bridge;threading.Thread(target=server.serve_forever,daemon=True).start();threading.Thread(target=bridge.openvibe_watchdog,daemon=True).start();bridge.loop=asyncio.get_running_loop();signal.signal(signal.SIGINT,bridge.stop);signal.signal(signal.SIGTERM,bridge.stop)
+def clamp(value: float, low: float, high: float) -> float:
+    return max(low, min(high, value))
+
+
+async def main() -> None:
+    parser = argparse.ArgumentParser(description="OpenBCI LSL SSVEP WebSocket bridge")
+    parser.add_argument("--config", default="ssvep_config.json", help="JSON 配置文件")
+    parser.add_argument("--simulate", action="store_true", help="不读取硬件，按周期发送左右模拟命令")
+    args = parser.parse_args()
+    if websockets is None:
+        raise SystemExit("缺少 websockets。请先运行: python -m pip install -r requirements.txt")
+
+    config = load_config(Path(args.config))
+    bridge = Bridge(config, simulate=args.simulate)
+    command_server = ThreadingHTTPServer(
+        (config["websocket_host"], int(config.get("openvibe_command_port", 8766))),
+        OpenViBECommandHandler,
+    )
+    OpenViBECommandHandler.bridge = bridge
+    command_thread = threading.Thread(target=command_server.serve_forever, daemon=True)
+    command_thread.start()
+    watchdog_thread = threading.Thread(target=bridge.openvibe_watchdog, daemon=True)
+    watchdog_thread.start()
+    signal.signal(signal.SIGINT, bridge.stop)
+    signal.signal(signal.SIGTERM, bridge.stop)
+    bridge.loop = asyncio.get_running_loop()
     try:
-        async with websockets.serve(bridge.websocket_handler,config["websocket_host"],int(config["websocket_port"])):
-            print(f"[WS] ws://{config['websocket_host']}:{config['websocket_port']}");print(f"[HTTP] http://{config['websocket_host']}:{config['openvibe_command_port']}");await asyncio.to_thread(bridge.simulate_loop if args.simulate else bridge.read_lsl_loop)
-    finally:server.shutdown();server.server_close()
+        async with websockets.serve(bridge.websocket_handler, config["websocket_host"], config["websocket_port"]):
+            print(f"[WS] WebSocket 服务已启动: ws://{config['websocket_host']}:{config['websocket_port']}")
+            print(f"[HTTP] OpenViBE 命令入口: http://{config['websocket_host']}:{config.get('openvibe_command_port', 8766)}")
+            worker = asyncio.to_thread(bridge.simulate_loop if args.simulate else bridge.read_lsl_loop)
+            await worker
+            while bridge.running:
+                await asyncio.sleep(0.2)
+    finally:
+        command_server.shutdown()
+        command_server.server_close()
 
-if __name__=="__main__":
-    try: asyncio.run(main())
-    except KeyboardInterrupt: pass
+
+if __name__ == "__main__":
+    try:
+        asyncio.run(main())
+    except KeyboardInterrupt:
+        pass

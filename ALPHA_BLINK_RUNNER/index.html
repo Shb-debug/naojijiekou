@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>ALPHA DASH · Blink Runner</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <main class="app-shell">
+    <header class="topbar">
+      <div class="brand"><div class="brand-mark"><i></i><i></i><i></i></div><div><p class="eyebrow">OPENBCI × OPENVIBE</p><h1>ALPHA DASH</h1></div></div>
+      <div class="top-meta"><button id="connectionPill" class="connection-pill"><i></i><span id="connectionText">模拟模式 · 键盘可用</span></button><span id="sessionTime">00:00</span></div>
+    </header>
+
+    <section id="homeScreen" class="screen home-screen">
+      <section class="hero panel">
+        <div class="hero-copy"><p class="eyebrow">NEURAL ARCADE / RUN 01</p><h2>眨一下，<br /><em>跳过障碍。</em></h2><p>小人会自动向前跑。保持专注，让 Alpha 波保持在线；每次眨眼都会触发一次跳跃。收集金币，坚持 40 秒抵达终点。</p><div class="hero-actions"><button id="startButton" class="primary-button">开始闯关 <b>→</b></button><button id="calibrationButton" class="secondary-button">查看接入状态</button></div></div>
+        <div class="hero-visual"><div class="orbit orbit-a"></div><div class="orbit orbit-b"></div><div class="alpha-wave"><span></span><span></span><span></span><span></span><span></span><span></span><span></span></div><div class="hero-runner">●<b>⌁</b></div><span class="visual-label label-one">ALPHA<br /><small>8—13 Hz</small></span><span class="visual-label label-two">BLINK<br /><small>JUMP</small></span><span class="visual-label label-three">40 SEC<br /><small>FINISH</small></span></div>
+        <div class="hero-tags"><span>眨眼 = 跳跃</span><span>金币 = +1</span><span>撞到障碍 = 失败</span></div>
+      </section>
+      <section class="history panel"><div class="section-title"><div><p class="eyebrow">LOCAL MEMORY</p><h2>历史战绩</h2></div><span id="historyCount">0 场</span></div><div id="historyList" class="history-list"></div></section>
+    </section>
+
+    <section id="gameScreen" class="screen game-screen hidden">
+      <aside class="side-panel panel">
+        <div class="side-head"><div><p class="eyebrow">NEURAL LINK / LIVE</p><h2>闯关遥测</h2></div><span class="live-dot">LIVE</span></div>
+        <div class="metric main-metric"><span>有效金币</span><strong><b id="coinValue">0</b><small> 枚</small></strong><div class="coin-track"><i id="coinBar"></i></div><small class="metric-note">胜利后才计入本局</small></div>
+        <div class="metric"><div class="metric-line"><span>剩余时间</span><strong id="timeValue">00:40</strong></div><div class="time-track"><i id="timeBar"></i></div><small class="metric-note">目标：抵达右侧终点</small></div>
+        <div class="metric"><div class="metric-line"><span>Alpha 状态</span><strong id="alphaValue">待机</strong></div><div class="alpha-track"><i id="alphaBar"></i></div><small id="alphaNote" class="metric-note">等待 EEG / 模拟信号</small></div>
+        <div class="metric"><div class="metric-line"><span>眨眼置信度</span><strong id="blinkValue">—</strong></div><div class="blink-track"><i id="blinkBar"></i></div><small class="metric-note">前额通道 · 自适应阈值</small></div>
+        <div class="metric status-card"><div class="metric-line"><span>当前状态</span><strong id="playerState">准备</strong></div><div class="status-line"><i></i><span id="jumpState">眨眼跳跃已启用</span></div></div>
+        <div class="hint-box"><b>操作提示</b><p>真实 EEG：自然眨眼触发跳跃。<br />演示模式：按 <kbd>空格</kbd> / <kbd>↑</kbd> 跳跃；<kbd>R</kbd> 重开。</p></div>
+      </aside>
+      <section class="stage panel"><div class="stage-head"><div><p class="eyebrow">ALPHA VALLEY / RUN <b>01</b></p><h2>神经跃迁跑</h2></div><div class="stage-legend"><span><i class="legend-coin"></i>金币</span><span><i class="legend-rock"></i>障碍</span><span><i class="legend-flag"></i>终点</span></div></div><div class="game-wrap"><canvas id="gameCanvas" aria-label="Alpha 波眨眼跳跃小游戏"></canvas><div class="canvas-vignette"></div><div class="canvas-hud hud-left"><i></i> ALPHA VALLEY <small>BLINK TO JUMP</small></div><div class="canvas-hud hud-right"><span id="distanceReadout">0000</span><small>M · TO FINISH</small></div><div class="finish-label">FINISH</div></div><div class="event-log"><span class="log-label"><i></i> EVENT STREAM</span><div id="commandLog"><span class="log-empty">等待第一次眨眼…</span></div></div></section>
+    </section>
+
+    <button class="jump-button" id="jumpButton" aria-label="模拟眨眼跳跃"><span>⌁</span><b>眨眼跳跃</b><small>SPACE / ↑</small></button>
+    <footer class="footer"><span>低延迟 EEG 原型 · OpenBCI GUI → LSL → OpenViBE → WebSocket</span><button id="homeButton">返回主页</button><em>BUILD 1.0 · 40 SEC RUN</em></footer>
+  </main>
+
+  <div id="resultModal" class="modal hidden" role="dialog" aria-modal="true"><div class="result-card"><div id="resultBadge" class="result-badge">✦</div><p id="resultKicker" class="eyebrow">RUN COMPLETE</p><h2 id="resultTitle">抵达终点！</h2><p id="resultPhrase" class="result-phrase">Alpha 节奏稳定，漂亮地完成了本次闯关。</p><div class="result-score"><span>本局累计金币</span><strong id="finalCoins">0</strong><small>枚</small></div><div class="result-stats"><span>拾取金币 <b id="resultCollected">0</b></span><span>有效金币 <b id="resultValid">0</b></span><span>对局时长 <b id="resultDuration">00:40</b></span></div><div class="modal-actions"><button id="replayButton" class="primary-button">再来一局 <b>↻</b></button><button id="finishButton" class="secondary-button">回到主页</button></div></div></div>
+  <script src="app.js"></script>
+</body>
+</html>

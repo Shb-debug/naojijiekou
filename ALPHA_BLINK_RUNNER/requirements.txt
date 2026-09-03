@@ -1,0 +1,3 @@
+numpy>=1.23
+pylsl>=1.16
+websockets>=10.4

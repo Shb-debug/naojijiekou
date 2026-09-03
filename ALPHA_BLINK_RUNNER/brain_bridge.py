@@ -1,8 +1,9 @@
 """Low-latency OpenBCI LSL / OpenViBE bridge for Alpha Dash.
 
 Pipeline: OpenBCI GUI -> LSL -> (OpenViBE Python Box or this fallback) -> WS.
-Frontal channels detect blink transients; posterior channels estimate 8-13 Hz
-alpha relative power. The detector uses robust MAD thresholds and hysteresis.
+Fp1/Fp2 (hardware channels 1/2) detect blink transients; O1/Oz/O2/Pz
+(hardware channels 15/14/16/13) estimate 8-13 Hz alpha relative power.
+The detector uses robust MAD thresholds and hysteresis.
 """
 from __future__ import annotations
 
@@ -37,9 +38,10 @@ DEFAULT_CONFIG: dict[str, Any] = {
     "eval_interval_seconds": 0.10, "blink_absolute_threshold": 35.0,
     "blink_z_threshold": 5.0, "blink_release_z": 1.8, "blink_refractory_seconds": 0.55,
     "alpha_band": [8.0, 13.0], "alpha_ready_ratio": 0.16,
-    "frontal_names": ["Fp1", "Fp2", "AF3", "AF4"],
-    "posterior_names": ["O1", "Oz", "O2", "Pz", "PO3", "PO4"],
-    "frontal_indices": [0, 1], "posterior_indices": [2, 3],
+    "frontal_names": ["Fp1", "Fp2"],
+    "posterior_names": ["O1", "Oz", "O2", "Pz"],
+    # Config indices are Python 0-based: hardware 1,2 and 15,14,16,13.
+    "frontal_indices": [0, 1], "posterior_indices": [14, 13, 15, 12],
     "websocket_host": "127.0.0.1", "websocket_port": 8765, "openvibe_command_port": 8766,
 }
 

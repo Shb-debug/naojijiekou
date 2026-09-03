@@ -10,10 +10,10 @@
   "blink_refractory_seconds": 0.55,
   "alpha_band": [8.0, 13.0],
   "alpha_ready_ratio": 0.16,
-  "frontal_names": ["Fp1", "Fp2", "AF3", "AF4"],
-  "posterior_names": ["O1", "Oz", "O2", "Pz", "PO3", "PO4"],
+  "frontal_names": ["Fp1", "Fp2"],
+  "posterior_names": ["O1", "Oz", "O2", "Pz"],
   "frontal_indices": [0, 1],
-  "posterior_indices": [2, 3],
+  "posterior_indices": [14, 13, 15, 12],
   "websocket_host": "127.0.0.1",
   "websocket_port": 8765,
   "openvibe_command_port": 8766

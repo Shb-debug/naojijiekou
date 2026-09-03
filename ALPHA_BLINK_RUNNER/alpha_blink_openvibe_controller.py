@@ -1,7 +1,8 @@
 """OpenViBE Python 3 Box: Alpha readiness + low-latency blink events.
 
-Input should contain frontal Fp1/Fp2 first and posterior O1/Oz/O2/Pz after
-Channel Selector. Each epoch is 0.45 s and arrives every 0.10 s.
+Input should contain the exact Channel Selector order:
+Fp1/Fp2 (hardware channels 1/2), then O1/Oz/O2/Pz
+(hardware channels 15/14/16/13). Each epoch is 0.45 s and arrives every 0.10 s.
 """
 import json
 import time
@@ -86,8 +87,13 @@ class MyOVBox(OVBox):
                 if values.ndim == 1: values = values.reshape(1, -1)
                 channels = values.T
                 sampleRate = float(self.header.samplingRate)
-                frontal = channels[:, :min(2, channels.shape[1])]
-                posterior = channels[:, 2:] if channels.shape[1] > 2 else channels
+                # OpenViBE Channel Selector order is Fp1, Fp2, O1, Oz, O2, Pz.
+                # The selector uses hardware channels 1;2;15;14;16;13.
+                if channels.shape[1] < 6:
+                    print("CHANNEL_MAPPING_ERROR: expected 6 channels in order Fp1,Fp2,O1,Oz,O2,Pz")
+                    continue
+                frontal = channels[:, :2]
+                posterior = channels[:, 2:6]
                 now = time.monotonic()
                 ratio = self.alphaRatio(posterior, sampleRate)
                 event, confidence, score = self.blink(frontal, now)
